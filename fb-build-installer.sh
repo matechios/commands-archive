@@ -116,8 +116,6 @@ main() {
   else
     echo "${C_YEL}${C_B}Đã cài fb-build.${C_0} Xử lý $warnings mục ở trên rồi chạy ${C_B}fb-build init${C_0} trong repo app."
   fi
-  command -v xcbeautify >/dev/null 2>&1 \
-    || echo "${C_DIM}Mẹo: brew install xcbeautify để log build dễ đọc hơn.${C_0}"
 }
 
 # The tool is a quoted heredoc inside a function and main runs on the last line,
@@ -198,7 +196,7 @@ Tùy chọn của init:
 
 Build được gửi cho tất cả nhóm tester của Firebase project và các tester trong
 "testers" của config (init ghi vào đó mọi tester của project).
-Release notes luôn kèm branch, commit, configuration, version và người build.
+Release notes luôn kèm branch, commit, author và configuration.
 EOF
 }
 
@@ -670,7 +668,7 @@ preflight() {
   HEAD_SHA="$(git rev-parse --verify --quiet HEAD)" || fail "Repo chưa có commit nào"
   SHORT_SHA="$(git rev-parse --short HEAD)"
   BRANCH="$(git symbolic-ref --quiet --short HEAD || echo "detached")"
-  local dirty upstream ahead
+  local dirty
   dirty="$(git status --porcelain)"
   if [[ -n "$dirty" ]]; then
     bad "Có thay đổi chưa commit. Chỉ build code đã commit, hãy commit hoặc stash trước:"
@@ -678,12 +676,6 @@ preflight() {
     (( $(wc -l <<< "$dirty") <= 15 )) || echo "      …"
   else
     ok "Git: $BRANCH @ $SHORT_SHA, không có thay đổi chưa commit"
-  fi
-  if upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)"; then
-    ahead="$(git rev-list --count '@{u}..HEAD')"
-    (( ahead == 0 )) || warn "$ahead commit chưa push lên $upstream"
-  else
-    warn "Branch $BRANCH chưa có upstream, commit $SHORT_SHA chưa có trên remote"
   fi
 
   # Config
@@ -815,16 +807,23 @@ recipients() {
 # Release notes
 # ---------------------------------------------------------------------------
 write_release_notes() {
-  local out="$1" version="$2"
   {
     if [[ -n "$OPT_MESSAGE" ]]; then
       printf '%s\n\n' "$OPT_MESSAGE"
     fi
-    echo "---"
-    echo "$SCHEME $version · $CONFIGURATION"
-    echo "$BRANCH @ $SHORT_SHA"
-    echo "Build bởi $(git config user.name || whoami) lúc $(date '+%Y-%m-%d %H:%M')"
-  } > "$out"
+    echo "Branch: $BRANCH"
+    echo "Commit: $SHORT_SHA"
+    echo "Author: $(git log -1 --format=%an "$HEAD_SHA")"
+    echo "Config: $CONFIGURATION"
+  } > "$1"
+}
+
+# The release notes and who gets the build, under a step of their own.
+show_notes_and_recipients() {
+  step "$1"
+  sed 's/^./  &/' "$2"
+  echo
+  echo "  Gửi cho:     $(recipients)"
 }
 
 # ---------------------------------------------------------------------------
@@ -850,20 +849,42 @@ explain_xcode_failure() {
   hint "Log đầy đủ: $log"
 }
 
-run_xcodebuild() {
-  local log="$1" status
-  shift
-  echo "${C_DIM}  xcodebuild $*${C_0}"
-  echo "${C_DIM}  log: $log${C_0}"
-  set +e
-  if command -v xcbeautify >/dev/null 2>&1; then
-    xcodebuild "$@" 2>&1 | tee "$log" | xcbeautify --quiet
+# "4:05" from a number of seconds.
+mm_ss() { printf '%d:%02d' $(($1 / 60)) $(($1 % 60)); }
+
+# Runs a command with its output only in a log file. On a terminal it shows a
+# spinner with the elapsed time instead. Sets ELAPSED, returns the exit status.
+run_logged() {
+  local label="$1" log="$2" pid start i=0 status=0
+  shift 2
+  start=$SECONDS
+  "$@" > "$log" 2>&1 &
+  pid=$!
+  # A script's background commands ignore Ctrl+C, so pass it on.
+  trap 'kill "$pid" 2>/dev/null; exit 130' INT TERM
+  if [[ -t 1 ]]; then
+    local -a frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+    while kill -0 "$pid" 2>/dev/null; do
+      printf '\r  %s %s %s' "${C_DIM}${frames[i % 10]}${C_0}" "$label" "${C_DIM}$(mm_ss $((SECONDS - start)))${C_0}"
+      i=$((i + 1))
+      sleep 0.1
+    done
+    printf '\r\033[K'
   else
-    xcodebuild "$@" 2>&1 | tee "$log" | grep --line-buffered -E ': error: |^error: |\*\* [A-Z ]+ (SUCCEEDED|FAILED) \*\*'
+    echo "  $label"
   fi
-  status=${PIPESTATUS[0]}
-  set -e
+  wait "$pid" || status=$?
+  trap - INT TERM
+  ELAPSED="$(mm_ss $((SECONDS - start)))"
+  return $status
+}
+
+run_xcodebuild() {
+  local label="$1" log="$2" status=0
+  shift 2
+  run_logged "$label" "$log" xcodebuild "$@" || status=$?
   if (( status != 0 )); then
+    grep -E ': error: |^error: ' "$log" | awk '!seen[$0]++' | head -10 | sed 's/^/    /' >&2 || true
     explain_xcode_failure "$log"
     fail "xcodebuild lỗi (exit $status)"
   fi
@@ -884,8 +905,7 @@ stage_archive() {
   local -a overrides=()
   [[ -z "$OPT_APP_VERSION" ]] || overrides+=("MARKETING_VERSION=$OPT_APP_VERSION")
   [[ -z "$OPT_BUILD_NUMBER" ]] || overrides+=("CURRENT_PROJECT_VERSION=$OPT_BUILD_NUMBER")
-  step "Archive $SCHEME ($CONFIGURATION)"
-  run_xcodebuild "$LOG_DIR/archive.log" \
+  run_xcodebuild "Đang archive…" "$LOG_DIR/archive.log" \
     "${CONTAINER[@]}" \
     -scheme "$SCHEME" \
     -configuration "$CONFIGURATION" \
@@ -908,7 +928,7 @@ stage_archive() {
     hint "Info.plist của app cần ghi CFBundleVersion là \$(CURRENT_PROJECT_VERSION) thì --build-number mới có tác dụng."
     fail "Archive có build number $APP_BUILD, không phải $OPT_BUILD_NUMBER"
   fi
-  ok "Archive: $APP_VERSION ($APP_BUILD)"
+  ok "Archive: $APP_VERSION ($APP_BUILD) ${C_DIM}· $ELAPSED${C_0}"
 
   verify_firebase_config
 }
@@ -935,7 +955,6 @@ verify_firebase_config() {
 }
 
 stage_export() {
-  step "Export .ipa"
   local options="$RUN_DIR/ExportOptions.plist" bundle uuid name
   local -a updates=()
   if [[ -n "$CFG_EXPORT_OPTIONS" ]]; then
@@ -962,7 +981,7 @@ stage_export() {
     done <<< "$SIGN_PROFILES"
     ok "Certificate: $(signing_identities | awk -F'\t' -v c="$SIGN_CERT" '$1 == c { print $2 }')"
   fi
-  run_xcodebuild "$LOG_DIR/export.log" \
+  run_xcodebuild "Đang export…" "$LOG_DIR/export.log" \
     -exportArchive \
     -archivePath "$ARCHIVE_PATH" \
     -exportPath "$EXPORT_PATH" \
@@ -970,20 +989,17 @@ stage_export() {
     ${updates[@]+"${updates[@]}"}
   IPA="$(find "$EXPORT_PATH" -maxdepth 1 -name "*.ipa" | sed -n 1p)"
   [[ -n "$IPA" ]] || fail "Export xong nhưng không thấy file .ipa trong $EXPORT_PATH"
-  ok "$IPA ($(du -h "$IPA" | cut -f1 | tr -d ' '))"
+  ok "$IPA ($(du -h "$IPA" | cut -f1 | tr -d ' ')) ${C_DIM}· $ELAPSED${C_0}"
 }
 
 stage_upload() {
-  step "Upload Firebase App Distribution"
   local -a args=(appdistribution:distribute "$IPA" --app "$APP_ID" --release-notes-file "$NOTES" --non-interactive)
   [[ -z "$TESTER_GROUPS" ]] || args+=(--groups "$TESTER_GROUPS")
   [[ -z "$TESTERS" ]] || args+=(--testers "$TESTERS")
-  local log="$LOG_DIR/upload.log" status
-  set +e
-  "$FIREBASE" "${args[@]}" 2>&1 | tee "$log"
-  status=${PIPESTATUS[0]}
-  set -e
+  local log="$LOG_DIR/upload.log" status=0
+  run_logged "Đang upload…" "$log" "$FIREBASE" "${args[@]}" || status=$?
   if (( status != 0 )); then
+    strip_ansi < "$log" | grep -iE 'error' | tail -5 | sed 's/^/    /' >&2 || true
     if grep -qiE "authenticat|firebase login" "$log"; then
       hint "Firebase CLI chưa đăng nhập hoặc phiên đã hết hạn. Chạy: firebase login --reauth"
     elif grep -qiE "403|permission|denied" "$log"; then
@@ -994,6 +1010,7 @@ stage_upload() {
     hint "File .ipa vẫn ở $IPA"
     fail "Upload lỗi (exit $status). Log: $log"
   fi
+  ok "Đã upload $SCHEME $APP_VERSION ($APP_BUILD) · $CONFIGURATION ${C_DIM}· $ELAPSED${C_0}"
   TESTING_URI="$(strip_ansi < "$log" | sed -n 's/.*Share this release with testers who have access: \(https:[^ ]*\).*/\1/p' | tail -1)"
   CONSOLE_URI="$(strip_ansi < "$log" | sed -n 's/.*View this release in the Firebase console: \(https:[^ ]*\).*/\1/p' | tail -1)"
 }
@@ -1028,7 +1045,6 @@ lock_build() {
 # The worktree and its ignored files are kept between runs so builds stay
 # incremental.
 stage_checkout() {
-  step "Chuẩn bị mã nguồn @ $SHORT_SHA"
   local base p keep
   base="$(cd "$REPO_OUT" && pwd -P)"
   SRC_DIR="$base/src"
@@ -1059,7 +1075,6 @@ stage_checkout() {
       rsync -a "$p" "$SRC_DIR/$p"
     fi
   done <<< "$keep"
-  ok "Worktree: $SRC_DIR"
   cd "$SRC_DIR"
 }
 
@@ -1085,12 +1100,13 @@ cmd_run() {
   fi
 
   if [[ "$DRY_RUN" == true ]]; then
-    step "Release notes dự kiến"
     local preview
     preview="$(mktemp -t fb-build-notes)"
-    write_release_notes "$preview" "${OPT_APP_VERSION:-<version>} (${OPT_BUILD_NUMBER:-<build>})"
-    cat "$preview"
+    write_release_notes "$preview"
+    show_notes_and_recipients "Release notes và tester (dự kiến)" "$preview"
     rm -f "$preview"
+    [[ -z "$OPT_APP_VERSION$OPT_BUILD_NUMBER" ]] \
+      || echo "  Version:     ${OPT_APP_VERSION:-theo project} (${OPT_BUILD_NUMBER:-theo project})"
     echo
     echo "Dry run: dừng trước khi build."
     return
@@ -1109,18 +1125,17 @@ cmd_run() {
   # Keep the Mac awake until this script exits.
   caffeinate -i -w $$ &
 
+  step "Archive $SCHEME ($CONFIGURATION)"
   stage_checkout
   stage_archive
   stage_export
-  write_release_notes "$NOTES" "$APP_VERSION ($APP_BUILD)"
+  write_release_notes "$NOTES"
+  step "Upload Firebase App Distribution"
   stage_upload
 
-  step "Đã upload $SCHEME $APP_VERSION ($APP_BUILD) · $CONFIGURATION lên Firebase"
-  echo "  Gửi cho:  $(recipients)"
-  echo "  Commit:   $BRANCH @ $SHORT_SHA"
-  [[ -z "$TESTING_URI" ]] || echo "  Tester:   $TESTING_URI"
-  [[ -z "$CONSOLE_URI" ]] || echo "  Console:  $CONSOLE_URI"
-  echo "  IPA:      $IPA"
+  show_notes_and_recipients "Release notes và tester" "$NOTES"
+  [[ -z "$TESTING_URI" ]] || echo "  Link tester: $TESTING_URI"
+  [[ -z "$CONSOLE_URI" ]] || echo "  Console:     $CONSOLE_URI"
 }
 
 cmd_xcodes() {
