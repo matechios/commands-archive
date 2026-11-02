@@ -133,7 +133,7 @@ cat <<'__FB_BUILD_TOOL__'
 # profiles and Apple Distribution certificate installed on this Mac, so the
 # export does not need an Apple account. The upload uses the account from
 # `firebase login`, and the build goes to every tester group of the Firebase
-# project. Only committed code is built.
+# project and to the testers listed in the config. Only committed code is built.
 #
 #   fb-build [options]          check, build and upload
 #   fb-build init [options]     create .fb-build.json for this repo
@@ -154,7 +154,7 @@ OUT_ROOT="${FB_BUILD_HOME:-$HOME/Library/Developer/fb-build}"
 KEEP_RUNS=5
 FIREBASE="${FIREBASE_BIN:-firebase}"
 PLISTBUDDY=/usr/libexec/PlistBuddy
-KNOWN_KEYS="scheme workspace project configuration firebase_plist export_options_plist xcode"
+KNOWN_KEYS="scheme workspace project configuration firebase_plist export_options_plist xcode testers"
 # Xcode 16 keeps provisioning profiles in the first, older Xcodes in the second.
 PROFILE_DIRS=("$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" "$HOME/Library/MobileDevice/Provisioning Profiles")
 
@@ -196,7 +196,8 @@ Tùy chọn của init:
                           Mặc định: Xcode đang chọn
   Build luôn dùng Xcode ghi trong config. Chạy lại init sẽ ghi đè config đã có.
 
-Build được gửi cho tất cả nhóm tester của Firebase project.
+Build được gửi cho tất cả nhóm tester của Firebase project và các tester trong
+"testers" của config (init ghi vào đó mọi tester của project).
 Release notes luôn kèm branch, commit, configuration, version và người build.
 EOF
 }
@@ -274,6 +275,7 @@ load_config() {
   CFG_PLIST="$(cfg_str firebase_plist)"
   CFG_EXPORT_OPTIONS="$(cfg_str export_options_plist)"
   CFG_XCODE="$(cfg_str xcode)"
+  CFG_TESTERS="$(cfg_str testers)"
 }
 
 # Installed Xcode apps as "<version><TAB><path>", newest first.
@@ -615,20 +617,25 @@ cmd_init() {
   if ! git ls-files --error-unmatch -- "$plist" >/dev/null 2>&1; then
     warn "$plist không có trong git. Các dev khác cần đặt file này đúng đường dẫn trên máy họ."
   fi
-  # Builds go to every tester group, so show who that is. Not being able to
-  # read them does not stop init: the build checks Firebase access again.
-  local groups
+  # Builds go to every tester group, and to the project's testers saved in
+  # the config. Not being able to read them does not stop init: the build
+  # checks Firebase access again.
+  local groups= testers=
   if ! command -v "$FIREBASE" >/dev/null 2>&1; then
-    warn "Chưa cài Firebase CLI nên không đọc được nhóm tester. Cài bằng: brew install firebase-cli"
-  elif firebase_json appdistribution:groups:list --project "$project_id"; then
-    groups="$(tester_groups)"
-    if [[ -n "$groups" ]]; then
-      ok "Nhóm tester: ${groups//,/, }"
-    else
-      warn "Project $project_id chưa có nhóm tester nào: build chỉ được upload, không gửi cho ai"
-    fi
+    warn "Chưa cài Firebase CLI nên không đọc được tester. Cài bằng: brew install firebase-cli"
+  elif ! firebase_json appdistribution:groups:list --project "$project_id"; then
+    warn "Không đọc được tester của project $project_id${FB_ERROR:+: $FB_ERROR}"
   else
-    warn "Không đọc được nhóm tester của project $project_id${FB_ERROR:+: $FB_ERROR}"
+    groups="$(tester_groups)"
+    [[ -z "$groups" ]] || ok "Nhóm tester: ${groups//,/, }"
+    if firebase_json appdistribution:testers:list --project "$project_id"; then
+      testers="$(tester_emails)"
+      [[ -z "$testers" ]] || ok "Tester: ${testers//,/, }"
+    else
+      warn "Không đọc được tester của project $project_id${FB_ERROR:+: $FB_ERROR}"
+    fi
+    [[ -n "$groups" || -n "$testers" ]] \
+      || warn "Project $project_id chưa có tester nào: build chỉ được upload, không gửi cho ai"
   fi
 
   local tmp
@@ -645,6 +652,7 @@ cmd_init() {
   # every machine, a path may not be.
   [[ -z "$(xcode_version)" ]] || plutil -insert xcode -string "$(xcode_version)" "$tmp"
   plutil -insert firebase_plist -string "$plist" "$tmp"
+  [[ -z "$testers" ]] || plutil -insert testers -string "$testers" "$tmp"
   # plutil escapes "/" as "\/"; both are valid JSON, the plain form reads better.
   plutil -convert json -r -o - "$tmp" | sed 's|\\/|/|g' > "$CONFIG"
   rm -f "$tmp"
@@ -749,7 +757,7 @@ preflight() {
   check_signing
 
   # Firebase CLI, login and tester groups
-  TESTER_GROUPS=
+  TESTER_GROUPS= TESTERS=
   if ! command -v "$FIREBASE" >/dev/null 2>&1; then
     bad "Chưa cài Firebase CLI. Cài bằng: brew install firebase-cli (hoặc npm install -g firebase-tools), rồi chạy: firebase login"
   elif [[ -n "$SRC_PLIST" ]]; then
@@ -773,10 +781,13 @@ check_firebase_access() {
     fi
     return
   fi
-  # The build goes to every tester group of the project.
+  # The build goes to every tester group of the project and to the testers
+  # from the config.
   TESTER_GROUPS="$(tester_groups)"
+  TESTERS="$(tr -d ' ' <<< "$CFG_TESTERS")"
   ok "Firebase CLI: $account | gửi cho: $(recipients)"
-  [[ -n "$TESTER_GROUPS" ]] || warn "Project $PROJECT_ID chưa có nhóm tester nào: build chỉ được upload, không gửi cho ai"
+  [[ -n "$TESTER_GROUPS" || -n "$TESTERS" ]] \
+    || warn "Project $PROJECT_ID chưa có nhóm tester nào và config không có \"testers\": build chỉ được upload, không gửi cho ai"
 }
 
 # Group aliases, comma-separated, from FB_RESULT of appdistribution:groups:list.
@@ -785,8 +796,19 @@ tester_groups() {
     | sed -n 's|^projects/[^/]*/groups/||p' | paste -sd, - || true
 }
 
+# Tester emails, comma-separated, from FB_RESULT of appdistribution:testers:list.
+tester_emails() {
+  plutil -extract result.testers xml1 -o - "$FB_RESULT" 2>/dev/null | xml_strings \
+    | sed -n 's|^projects/[^/]*/testers/||p' | paste -sd, - || true
+}
+
 recipients() {
-  if [[ -n "$TESTER_GROUPS" ]]; then echo "nhóm ${TESTER_GROUPS//,/, }"; else echo "không ai (chỉ upload)"; fi
+  local -a to=()
+  [[ -z "$TESTER_GROUPS" ]] || to+=("nhóm ${TESTER_GROUPS//,/, }")
+  [[ -z "$TESTERS" ]] || to+=("${TESTERS//,/, }")
+  if (( ${#to[@]} == 0 )); then echo "không ai (chỉ upload)"; return; fi
+  local IFS=';'
+  echo "${to[*]}" | sed 's/;/; /g'
 }
 
 # ---------------------------------------------------------------------------
@@ -955,6 +977,7 @@ stage_upload() {
   step "Upload Firebase App Distribution"
   local -a args=(appdistribution:distribute "$IPA" --app "$APP_ID" --release-notes-file "$NOTES" --non-interactive)
   [[ -z "$TESTER_GROUPS" ]] || args+=(--groups "$TESTER_GROUPS")
+  [[ -z "$TESTERS" ]] || args+=(--testers "$TESTERS")
   local log="$LOG_DIR/upload.log" status
   set +e
   "$FIREBASE" "${args[@]}" 2>&1 | tee "$log"
