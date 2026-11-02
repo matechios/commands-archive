@@ -134,11 +134,12 @@ cat <<'__FB_BUILD_TOOL__'
 # project and to the testers listed in the config. Only committed code is built.
 #
 #   fb-build [options]          check, build and upload
-#   fb-build init [options]     create .fb-build.json for this repo
+#   fb-build init [options]     create .team-tools/fb-build.json for this repo
 #   fb-build xcodes             list the installed Xcode versions
 #   fb-build --version          print the tool version
 #
-# Team settings live in .fb-build.json at the root of the app repo. Build
+# Settings live in .team-tools/fb-build.json in the app repo, one per Mac
+# (.team-tools is usually git-ignored), written by `fb-build init`. Build
 # output goes to ~/Library/Developer/fb-build/<owner>/<repo>/<timestamp>/.
 # The build itself runs in a git worktree of HEAD next to it (src/) with its
 # own DerivedData, so Xcode can keep working on the repo in the meantime.
@@ -147,7 +148,7 @@ set -euo pipefail
 
 # Bump TOOL_VERSION for every release.
 TOOL_VERSION=1.0
-CONFIG_NAME=.fb-build.json
+CONFIG_NAME=.team-tools/fb-build.json
 OUT_ROOT="${FB_BUILD_HOME:-$HOME/Library/Developer/fb-build}"
 KEEP_RUNS=5
 FIREBASE="${FIREBASE_BIN:-firebase}"
@@ -175,7 +176,7 @@ usage() {
 Build app iOS trong repo hiện tại và upload lên Firebase App Distribution.
 
   fb-build [tùy chọn]         kiểm tra, build, upload
-  fb-build init [tùy chọn]    tạo .fb-build.json cho repo
+  fb-build init [tùy chọn]    tạo .team-tools/fb-build.json cho repo
   fb-build xcodes             liệt kê các bản Xcode đã cài
   fb-build --version          in phiên bản của tool
 
@@ -652,8 +653,12 @@ cmd_init() {
   plutil -insert firebase_plist -string "$plist" "$tmp"
   [[ -z "$testers" ]] || plutil -insert testers -string "$testers" "$tmp"
   # plutil escapes "/" as "\/"; both are valid JSON, the plain form reads better.
+  mkdir -p "$(dirname "$CONFIG")"
   plutil -convert json -r -o - "$tmp" | sed 's|\\/|/|g' > "$CONFIG"
   rm -f "$tmp"
+  # Only committed code is built, so an untracked config would block it.
+  git check-ignore -q "$CONFIG" \
+    || warn "$CONFIG_NAME chưa được gitignore. Thêm .team-tools/ vào .gitignore, hoặc commit file này."
 
   step "Khởi tạo cấu hình build thành công"
 }
