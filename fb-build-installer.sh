@@ -196,7 +196,7 @@ Tùy chọn của init:
 
 Build được gửi cho tất cả nhóm tester của Firebase project và các tester trong
 "testers" của config (init ghi vào đó mọi tester của project).
-Release notes luôn kèm branch, commit, author và configuration.
+Release notes luôn kèm một dòng branch, commit, author và configuration.
 EOF
 }
 
@@ -708,11 +708,8 @@ preflight() {
   if $have_container; then
     pods_dir="$(dirname "${WORKSPACE:-$PROJECT}")"
     if [[ -f "$pods_dir/Podfile" ]]; then
-      if diff -q "$pods_dir/Podfile.lock" "$pods_dir/Pods/Manifest.lock" >/dev/null 2>&1; then
-        ok "CocoaPods: Pods đã đồng bộ với Podfile.lock"
-      else
-        bad "Pods chưa đồng bộ với Podfile.lock. Chạy pod install trong repo"
-      fi
+      diff -q "$pods_dir/Podfile.lock" "$pods_dir/Pods/Manifest.lock" >/dev/null 2>&1 \
+        || bad "Pods chưa đồng bộ với Podfile.lock. Chạy pod install trong repo"
     fi
   fi
 
@@ -741,7 +738,6 @@ preflight() {
       bad "$plist không có PROJECT_ID"
     else
       SRC_PLIST="$plist"
-      ok "Firebase: $plist → project $PROJECT_ID, app $APP_ID"
     fi
   fi
 
@@ -811,19 +807,13 @@ write_release_notes() {
     if [[ -n "$OPT_MESSAGE" ]]; then
       printf '%s\n\n' "$OPT_MESSAGE"
     fi
-    echo "Branch: $BRANCH"
-    echo "Commit: $SHORT_SHA"
-    echo "Author: $(git log -1 --format=%an "$HEAD_SHA")"
-    echo "Config: $CONFIGURATION"
+    echo "$BRANCH · $SHORT_SHA · $(git log -1 --format=%an "$HEAD_SHA") · $CONFIGURATION"
   } > "$1"
 }
 
-# The release notes and who gets the build, under a step of their own.
-show_notes_and_recipients() {
-  step "$1"
-  sed 's/^./  &/' "$2"
-  echo
-  echo "  Gửi cho:     $(recipients)"
+show_release_notes() {
+  echo "  Release notes:"
+  sed 's/^./    &/' "$1"
 }
 
 # ---------------------------------------------------------------------------
@@ -951,7 +941,6 @@ verify_firebase_config() {
   if [[ -n "$PLIST_BUNDLE_ID" && "$bundle_id" != "$PLIST_BUNDLE_ID" ]]; then
     warn "Bundle ID của app ($bundle_id) khác BUNDLE_ID trong $SRC_PLIST ($PLIST_BUNDLE_ID)"
   fi
-  ok "App có Firebase config $APP_ID"
 }
 
 stage_export() {
@@ -977,9 +966,7 @@ stage_export() {
     "$PLISTBUDDY" -c "Add :provisioningProfiles dict" "$options" >/dev/null
     while IFS=$'\t' read -r bundle uuid name; do
       "$PLISTBUDDY" -c "Add :provisioningProfiles:$bundle string $uuid" "$options" >/dev/null
-      ok "$bundle → $name"
     done <<< "$SIGN_PROFILES"
-    ok "Certificate: $(signing_identities | awk -F'\t' -v c="$SIGN_CERT" '$1 == c { print $2 }')"
   fi
   run_xcodebuild "Đang export…" "$LOG_DIR/export.log" \
     -exportArchive \
@@ -1011,8 +998,6 @@ stage_upload() {
     fail "Upload lỗi (exit $status). Log: $log"
   fi
   ok "Đã upload $SCHEME $APP_VERSION ($APP_BUILD) · $CONFIGURATION ${C_DIM}· $ELAPSED${C_0}"
-  TESTING_URI="$(strip_ansi < "$log" | sed -n 's/.*Share this release with testers who have access: \(https:[^ ]*\).*/\1/p' | tail -1)"
-  CONSOLE_URI="$(strip_ansi < "$log" | sed -n 's/.*View this release in the Firebase console: \(https:[^ ]*\).*/\1/p' | tail -1)"
 }
 
 # ---------------------------------------------------------------------------
@@ -1056,7 +1041,6 @@ stage_checkout() {
   else
     rm -rf "$SRC_DIR"
     git worktree add --quiet --detach "$SRC_DIR" "$HEAD_SHA"
-    warn "Lần đầu build trong worktree nên sẽ lâu hơn, các lần sau build tiếp từ cache"
   fi
   if [[ -f "$SRC_DIR/.gitmodules" ]]; then
     git -C "$SRC_DIR" submodule update --quiet --init --recursive
@@ -1103,10 +1087,11 @@ cmd_run() {
     local preview
     preview="$(mktemp -t fb-build-notes)"
     write_release_notes "$preview"
-    show_notes_and_recipients "Release notes và tester (dự kiến)" "$preview"
-    rm -f "$preview"
+    step "Upload Firebase App Distribution (dự kiến)"
     [[ -z "$OPT_APP_VERSION$OPT_BUILD_NUMBER" ]] \
-      || echo "  Version:     ${OPT_APP_VERSION:-theo project} (${OPT_BUILD_NUMBER:-theo project})"
+      || echo "  Version: ${OPT_APP_VERSION:-theo project} (${OPT_BUILD_NUMBER:-theo project})"
+    show_release_notes "$preview"
+    rm -f "$preview"
     echo
     echo "Dry run: dừng trước khi build."
     return
@@ -1132,10 +1117,7 @@ cmd_run() {
   write_release_notes "$NOTES"
   step "Upload Firebase App Distribution"
   stage_upload
-
-  show_notes_and_recipients "Release notes và tester" "$NOTES"
-  [[ -z "$TESTING_URI" ]] || echo "  Link tester: $TESTING_URI"
-  [[ -z "$CONSOLE_URI" ]] || echo "  Console:     $CONSOLE_URI"
+  show_release_notes "$NOTES"
 }
 
 cmd_xcodes() {
