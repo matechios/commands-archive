@@ -4,103 +4,109 @@
 # this file is all a dev needs; run a newer copy of it to update.
 #   ./fb-build-installer.sh [bin_dir]
 #
-# Do not edit below the marker line: scripts/build-installer.sh regenerates it
+# Also works piped: curl -s <url> | bash
+#
+# Do not edit the tool_body heredoc: scripts/build-installer.sh regenerates it
 # from bin/fb-build.
 set -euo pipefail
 
-MARKER=__FB_BUILD_TOOL__
-BIN_DIR="${1:-$HOME/.local/bin}"
-TARGET="$BIN_DIR/fb-build"
+main() {
+  BIN_DIR="${1:-$HOME/.local/bin}"
+  TARGET="$BIN_DIR/fb-build"
 
-if [[ -t 1 ]]; then
-  C_RED=$'\033[31m' C_YEL=$'\033[33m' C_GRN=$'\033[32m' C_BLU=$'\033[34m' C_DIM=$'\033[2m' C_B=$'\033[1m' C_0=$'\033[0m'
-else
-  C_RED= C_YEL= C_GRN= C_BLU= C_DIM= C_B= C_0=
-fi
-ok()   { echo "  ${C_GRN}✓${C_0} $*"; }
-warn() { echo "  ${C_YEL}!${C_0} $*"; }
-bad()  { echo "  ${C_RED}✗${C_0} $*"; }
-fix()  { echo "    ${C_DIM}$*${C_0}"; }
-die()  { bad "$*"; exit 1; }
+  if [[ -t 1 ]]; then
+    C_RED=$'\033[31m' C_YEL=$'\033[33m' C_GRN=$'\033[32m' C_BLU=$'\033[34m' C_DIM=$'\033[2m' C_B=$'\033[1m' C_0=$'\033[0m'
+  else
+    C_RED= C_YEL= C_GRN= C_BLU= C_DIM= C_B= C_0=
+  fi
+  ok()   { echo "  ${C_GRN}✓${C_0} $*"; }
+  warn() { echo "  ${C_YEL}!${C_0} $*"; }
+  bad()  { echo "  ${C_RED}✗${C_0} $*"; }
+  fix()  { echo "    ${C_DIM}$*${C_0}"; }
+  die()  { bad "$*"; exit 1; }
 
-tool_body() { sed -n "/^$MARKER\$/,\$p" "${BASH_SOURCE[0]}" | tail -n +2; }
-VERSION="$(tool_body | sed -n 's/^TOOL_VERSION=//p' | head -1)"
-[[ -n "$VERSION" ]] || die "File cài đặt bị lỗi: không có tool đi kèm. Tải lại file cài đặt."
+  VERSION="$(tool_body | sed -n 's/^TOOL_VERSION=//p' | head -1)"
+  [[ -n "$VERSION" ]] || die "File cài đặt bị lỗi: không có tool đi kèm. Tải lại file cài đặt."
 
-echo
-echo "${C_BLU}==>${C_0} ${C_B}Cài đặt fb-build $VERSION${C_0}"
-echo
+  echo
+  echo "${C_BLU}==>${C_0} ${C_B}Cài đặt fb-build $VERSION${C_0}"
+  echo
 
-previous=
-[[ ! -x "$TARGET" ]] || previous="$("$TARGET" --version 2>/dev/null | sed 's/^fb-build //' || true)"
-mkdir -p "$BIN_DIR" 2>/dev/null || die "Không tạo được thư mục $BIN_DIR"
-tool_body > "$TARGET.tmp" && chmod +x "$TARGET.tmp" && mv -f "$TARGET.tmp" "$TARGET" \
-  || die "Không ghi được $TARGET"
-if [[ -n "$previous" && "$previous" != "$VERSION" ]]; then
-  ok "fb-build: cập nhật $previous → $VERSION"
-else
-  ok "fb-build $VERSION"
-fi
+  previous=
+  [[ ! -x "$TARGET" ]] || previous="$("$TARGET" --version 2>/dev/null | sed 's/^fb-build //' || true)"
+  mkdir -p "$BIN_DIR" 2>/dev/null || die "Không tạo được thư mục $BIN_DIR"
+  tool_body > "$TARGET.tmp" && chmod +x "$TARGET.tmp" && mv -f "$TARGET.tmp" "$TARGET" \
+    || die "Không ghi được $TARGET"
+  if [[ -n "$previous" && "$previous" != "$VERSION" ]]; then
+    ok "fb-build: cập nhật $previous → $VERSION"
+  else
+    ok "fb-build $VERSION"
+  fi
 
-warnings=0
-case ":$PATH:" in
-  *":$BIN_DIR:"*) ;;
-  *)
-    warn "${BIN_DIR/#$HOME/~} chưa có trong PATH. Thêm vào ~/.zshrc rồi mở lại Terminal:"
-    fix "echo 'export PATH=\"${BIN_DIR/#$HOME/\$HOME}:\$PATH\"' >> ~/.zshrc"
+  warnings=0
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *)
+      warn "${BIN_DIR/#$HOME/~} chưa có trong PATH. Thêm vào ~/.zshrc rồi mở lại Terminal:"
+      fix "echo 'export PATH=\"${BIN_DIR/#$HOME/\$HOME}:\$PATH\"' >> ~/.zshrc"
+      warnings=$((warnings + 1))
+      ;;
+  esac
+
+  xcodes="$("$TARGET" xcodes 2>/dev/null | sed -n 's/^  [* ] \([^ ]*\) .*/\1/p' | paste -sd, - | sed 's/,/, /g')"
+  if [[ -z "$xcodes" ]]; then
+    bad "Chưa cài Xcode. Cài Xcode từ App Store rồi chạy lại file cài đặt."
     warnings=$((warnings + 1))
-    ;;
-esac
+  elif [[ "$xcodes" == *", "* ]]; then
+    ok "Xcode $xcodes ${C_DIM}· chọn bản để build bằng fb-build init --xcode <version>${C_0}"
+  else
+    ok "Xcode $xcodes"
+  fi
 
-xcodes="$("$TARGET" xcodes 2>/dev/null | sed -n 's/^  [* ] \([^ ]*\) .*/\1/p' | paste -sd, - | sed 's/,/, /g')"
-if [[ -z "$xcodes" ]]; then
-  bad "Chưa cài Xcode. Cài Xcode từ App Store rồi chạy lại file cài đặt."
-  warnings=$((warnings + 1))
-elif [[ "$xcodes" == *", "* ]]; then
-  ok "Xcode $xcodes ${C_DIM}· chọn bản để build bằng fb-build init --xcode <version>${C_0}"
-else
-  ok "Xcode $xcodes"
-fi
-
-if ! command -v firebase >/dev/null 2>&1 && command -v brew >/dev/null 2>&1 && [[ -t 0 ]]; then
-  read -r -p "  ${C_YEL}?${C_0} Chưa có Firebase CLI. Cài bằng Homebrew? [Y/n] " answer
-  if [[ ! "$answer" =~ ^[Nn] ]]; then
-    log="$(mktemp -t fb-build-brew)"
-    printf '    %s' "${C_DIM}Đang cài Firebase CLI…${C_0}"
-    if brew install firebase-cli > "$log" 2>&1; then
-      printf '\r\033[K'
-      rm -f "$log"
-    else
-      printf '\n'
-      bad "Cài Firebase CLI lỗi. Log: $log"
+  if ! command -v firebase >/dev/null 2>&1 && command -v brew >/dev/null 2>&1 && [[ -t 0 ]]; then
+    read -r -p "  ${C_YEL}?${C_0} Chưa có Firebase CLI. Cài bằng Homebrew? [Y/n] " answer
+    if [[ ! "$answer" =~ ^[Nn] ]]; then
+      log="$(mktemp -t fb-build-brew)"
+      printf '    %s' "${C_DIM}Đang cài Firebase CLI…${C_0}"
+      if brew install firebase-cli > "$log" 2>&1; then
+        printf '\r\033[K'
+        rm -f "$log"
+      else
+        printf '\n'
+        bad "Cài Firebase CLI lỗi. Log: $log"
+      fi
     fi
   fi
-fi
-if command -v firebase >/dev/null 2>&1; then
-  account="$(firebase login:list --json 2>/dev/null | plutil -extract result.0.user.email raw -o - - 2>/dev/null || true)"
-  if [[ -n "$account" ]]; then
-    ok "Firebase CLI $(firebase --version 2>/dev/null) · $account"
+  if command -v firebase >/dev/null 2>&1; then
+    account="$(firebase login:list --json 2>/dev/null | plutil -extract result.0.user.email raw -o - - 2>/dev/null || true)"
+    if [[ -n "$account" ]]; then
+      ok "Firebase CLI $(firebase --version 2>/dev/null) · $account"
+    else
+      warn "Firebase CLI chưa đăng nhập. Chạy:"
+      fix "firebase login"
+      warnings=$((warnings + 1))
+    fi
   else
-    warn "Firebase CLI chưa đăng nhập. Chạy:"
-    fix "firebase login"
+    bad "Chưa có Firebase CLI. Cài bằng:"
+    fix "brew install firebase-cli"
     warnings=$((warnings + 1))
   fi
-else
-  bad "Chưa có Firebase CLI. Cài bằng:"
-  fix "brew install firebase-cli"
-  warnings=$((warnings + 1))
-fi
 
-echo
-if (( warnings == 0 )); then
-  echo "${C_GRN}${C_B}Cài đặt xong.${C_0} Trong thư mục repo app, chạy ${C_B}fb-build init${C_0} để bắt đầu."
-else
-  echo "${C_YEL}${C_B}Đã cài fb-build.${C_0} Xử lý $warnings mục ở trên rồi chạy ${C_B}fb-build init${C_0} trong repo app."
-fi
-command -v xcbeautify >/dev/null 2>&1 \
-  || echo "${C_DIM}Mẹo: brew install xcbeautify để log build dễ đọc hơn.${C_0}"
-exit 0
-__FB_BUILD_TOOL__
+  echo
+  if (( warnings == 0 )); then
+    echo "${C_GRN}${C_B}Cài đặt xong.${C_0} Trong thư mục repo app, chạy ${C_B}fb-build init${C_0} để bắt đầu."
+  else
+    echo "${C_YEL}${C_B}Đã cài fb-build.${C_0} Xử lý $warnings mục ở trên rồi chạy ${C_B}fb-build init${C_0} trong repo app."
+  fi
+  command -v xcbeautify >/dev/null 2>&1 \
+    || echo "${C_DIM}Mẹo: brew install xcbeautify để log build dễ đọc hơn.${C_0}"
+}
+
+# The tool is a quoted heredoc inside a function and main runs on the last line,
+# so bash parses the whole file before doing anything. That is what makes
+# `curl … | bash` work: there is no file on disk to read the tool back from.
+tool_body() {
+cat <<'__FB_BUILD_TOOL__'
 #!/bin/bash
 # fb-build: archive the iOS app in the current git repo on this Mac and
 # upload it to Firebase App Distribution. The archive is signed the way the
@@ -1051,3 +1057,7 @@ case "$CMD" in
   xcodes) cmd_xcodes ;;
   run) cmd_run ;;
 esac
+__FB_BUILD_TOOL__
+}
+
+main "$@"
