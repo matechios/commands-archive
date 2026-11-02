@@ -4,12 +4,13 @@
 
 set -e
 
-TOOL_VERSION="1.3"
+TOOL_VERSION="1.4"
 TOOLS_REPO_URL="${TOOLS_REPO_URL:-https://github.com/matechios/ios-weekly-report.git}"
 TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(pwd)"
 GIT_HOOKS_DIR="$REPO_DIR/.git/hooks"
-SCRIPTS_TARGET="$REPO_DIR/.team-tools"
+TEAM_TOOLS_DIR="$REPO_DIR/.team-tools"
+SCRIPTS_TARGET="$TEAM_TOOLS_DIR/weekly-report"
 CODEX_SKILL_TARGET="$REPO_DIR/.codex/skills/weekly-report"
 CLAUDE_SKILL_TARGET="$REPO_DIR/.claude/skills/weekly-report"
 CLAUDE_COMMANDS_TARGET="$REPO_DIR/.claude/commands"
@@ -73,9 +74,20 @@ echo "Project: $REPO_DIR"
 echo ""
 
 # Copy scripts vào repo
-step 1 "Cài đặt report tool vào .team-tools/"
+step 1 "Cài đặt report tool vào .team-tools/weekly-report/"
 mkdir -p "$SCRIPTS_TARGET"
 cp "$TOOLS_DIR/scripts/report.py" "$SCRIPTS_TARGET/"
+
+# Migrate từ bản cũ (<= v1.3) cài thẳng vào .team-tools/
+if [ -f "$TEAM_TOOLS_DIR/report.py" ]; then
+    rm -f "$TEAM_TOOLS_DIR/report.py"
+    detail "Đã xóa .team-tools/report.py bản cũ"
+fi
+if [ -f "$TEAM_TOOLS_DIR/.env" ] && [ ! -f "$SCRIPTS_TARGET/.env" ] && \
+   grep -q "ios-weekly-report config" "$TEAM_TOOLS_DIR/.env"; then
+    mv "$TEAM_TOOLS_DIR/.env" "$SCRIPTS_TARGET/.env"
+    detail "Đã chuyển .team-tools/.env sang .team-tools/weekly-report/.env"
+fi
 
 # Cài Codex skill local trong project
 step 2 "Cài đặt Codex skill"
@@ -101,7 +113,7 @@ chmod +x "$GIT_HOOKS_DIR/commit-msg"
 # Tạo file .env nếu chưa có
 step 5 "Cấu hình project"
 if [ ! -f "$SCRIPTS_TARGET/.env" ]; then
-    detail "Đã tạo .team-tools/.env"
+    detail "Đã tạo .team-tools/weekly-report/.env"
     cat > "$SCRIPTS_TARGET/.env" << 'EOF'
 # ── ios-weekly-report config ───────────────────────────────
 # Tên của bạn (override git config user.name)
@@ -155,8 +167,8 @@ echo -e "    Preview/xem trước: thêm preview hoặc xem trước ở dòng 1
 echo -e "    Claude slash command: /report"
 echo ""
 echo -e "  ${BOLD}Chạy thủ công nếu không dùng AI:${RESET}"
-echo -e "    python .team-tools/report.py             # gửi lên Google Sheets"
-echo -e "    python .team-tools/report.py --dry-run   # preview/xem trước, không gửi"
-echo -e "    python .team-tools/report.py --performance-file /path/to/summary.txt"
-echo -e "    python .team-tools/report.py --note-file /path/to/report-prompt.txt"
+echo -e "    python .team-tools/weekly-report/report.py             # gửi lên Google Sheets"
+echo -e "    python .team-tools/weekly-report/report.py --dry-run   # preview/xem trước, không gửi"
+echo -e "    python .team-tools/weekly-report/report.py --performance-file /path/to/summary.txt"
+echo -e "    python .team-tools/weekly-report/report.py --note-file /path/to/report-prompt.txt"
 echo ""
