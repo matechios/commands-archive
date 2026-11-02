@@ -12,14 +12,48 @@ set -euo pipefail
 BASE_PROJECT_NAME="ProjMaker"
 BASE_PROJECT_INFO_FILE=".base-project-info.json"
 TEMPLATE_REPO="git@github.com:matechios/ProjMaker.git"
-CURRENT_STEP=0
-TOTAL_STEPS=6
 
-progress() {
-  local message="$1"
+if [[ -t 1 ]]; then
+  C_RED=$'\033[31m' C_YEL=$'\033[33m' C_GRN=$'\033[32m' C_BLU=$'\033[34m' C_DIM=$'\033[2m' C_B=$'\033[1m' C_0=$'\033[0m'
+else
+  C_RED= C_YEL= C_GRN= C_BLU= C_DIM= C_B= C_0=
+fi
 
-  CURRENT_STEP=$((CURRENT_STEP + 1))
-  printf '[%02d/%02d] %s...\n' "$CURRENT_STEP" "$TOTAL_STEPS" "$message"
+ok()    { echo "  ${C_GRN}✓${C_0} $*"; }
+warn()  { echo "  ${C_YEL}!${C_0} $*"; }
+bad()   { echo "  ${C_RED}✗${C_0} $*"; }
+fix()   { echo "    ${C_DIM}$*${C_0}"; }
+die()   { bad "$*"; exit 1; }
+title() { echo; echo "${C_BLU}==>${C_0} ${C_B}$1${C_0}${2:+ ${C_DIM}· $2${C_0}}"; echo; }
+tilde() { printf '%s' "${1/#$HOME/~}"; }
+
+mm_ss() { printf '%d:%02d' $(($1 / 60)) $(($1 % 60)); }
+
+# Runs a command with its output only in a log file. On a terminal it shows a
+# spinner with the elapsed time instead. Sets ELAPSED, returns the exit status.
+run_logged() {
+  local label="$1" log="$2" pid start i=0 status=0
+  shift 2
+  start=$SECONDS
+  "$@" > "$log" 2>&1 &
+  pid=$!
+  # A script's background commands ignore Ctrl+C, so pass it on.
+  trap 'kill "$pid" 2>/dev/null; exit 130' INT TERM
+  if [[ -t 1 ]]; then
+    local -a frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+    while kill -0 "$pid" 2>/dev/null; do
+      printf '\r  %s %s %s' "${C_DIM}${frames[i % 10]}${C_0}" "$label" "${C_DIM}$(mm_ss $((SECONDS - start)))${C_0}"
+      i=$((i + 1))
+      sleep 0.1
+    done
+    printf '\r\033[K'
+  else
+    echo "  $label"
+  fi
+  wait "$pid" || status=$?
+  trap - INT TERM
+  ELAPSED="$(mm_ss $((SECONDS - start)))"
+  return $status
 }
 
 prompt_required() {
@@ -27,7 +61,7 @@ prompt_required() {
   local value=""
 
   while [[ -z "$value" ]]; do
-    read -r -p "$prompt" value
+    read -r -p "  ${C_YEL}?${C_0} $prompt" value < /dev/tty || exit 1
     value="${value#"${value%%[![:space:]]*}"}"
     value="${value%"${value##*[![:space:]]}"}"
   done
@@ -39,7 +73,7 @@ prompt_optional() {
   local prompt="$1"
   local value=""
 
-  read -r -p "$prompt" value
+  read -r -p "  ${C_YEL}?${C_0} $prompt" value < /dev/tty || exit 1
   value="${value#"${value%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
 
@@ -109,12 +143,8 @@ rename_project_paths() {
 clone_project_template() {
   local target_dir="$1"
 
-  if ! command -v git >/dev/null 2>&1; then
-    echo "Không tìm thấy git. Hãy cài git rồi chạy lại script."
-    exit 1
-  fi
-
-  git clone --depth 1 "$TEMPLATE_REPO" "$target_dir"
+  # Output goes to a log behind a spinner, so ssh must fail instead of prompting.
+  GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}" git clone --depth 1 "$TEMPLATE_REPO" "$target_dir"
   rm -rf \
     "$target_dir/.git" \
     "$target_dir/.claude" \
@@ -127,37 +157,17 @@ clone_project_template() {
   find "$target_dir" -type d -name 'xcuserdata' -prune -exec rm -rf {} +
 }
 
-open_workspace() {
+rename_project() {
   local target_dir="$1"
   local new_project_name="$2"
-  local workspace_path="$target_dir/$new_project_name.xcworkspace"
 
-  if [[ -d "$workspace_path" ]]; then
-    open "$workspace_path"
-  else
-    echo "Không tìm thấy workspace để mở: $workspace_path"
-  fi
+  rename_project_paths "$target_dir" "$new_project_name"
+  replace_project_name_in_files "$target_dir" "$new_project_name"
+  write_base_project_info "$target_dir"
 }
 
-install_pods_if_possible() {
-  local target_dir="$1"
-
-  if [[ "${SCAFFOLD_SKIP_POD_INSTALL:-}" == "1" ]]; then
-    echo "Bỏ qua pod install vì SCAFFOLD_SKIP_POD_INSTALL=1."
-    return
-  fi
-
-  if [[ ! -f "$target_dir/Podfile" ]]; then
-    return
-  fi
-
-  if ! command -v pod >/dev/null 2>&1; then
-    echo "Không tìm thấy CocoaPods. Hãy chạy thủ công: cd \"$target_dir\" && pod install"
-    return
-  fi
-
-  echo "Đang chạy pod install..."
-  (cd "$target_dir" && pod install)
+install_pods() {
+  cd "$1" && pod install
 }
 
 write_base_project_info() {
@@ -188,57 +198,80 @@ main() {
   local output_parent
   local output_parent_abs
   local target_dir
+  local workspace_path
+  local base_version
+  local log_dir
+  local warnings=0
 
-  new_project_name="$(prompt_required "Nhập tên project: ")"
+  title "Tạo project iOS từ template $BASE_PROJECT_NAME"
 
-  if [[ ! "$new_project_name" =~ ^[A-Za-z][A-Za-z0-9]*$ ]]; then
-    echo "Tên project chỉ nên gồm chữ/số và bắt đầu bằng chữ để hợp lệ với Swift module, target và bundle id."
-    exit 1
-  fi
+  { : < /dev/tty; } 2>/dev/null || die "Cần chạy script trong Terminal để nhập thông tin project."
+  command -v git >/dev/null 2>&1 || die "Chưa có git. Cài Xcode Command Line Tools rồi chạy lại: xcode-select --install"
 
-  output_parent_input="$(prompt_optional "Nhập đường dẫn chứa project (để trống để tạo trong thư mục hiện tại): ")"
+  new_project_name="$(prompt_required "Tên project: ")"
+  [[ "$new_project_name" =~ ^[A-Za-z][A-Za-z0-9]*$ ]] \
+    || die "Tên project chỉ gồm chữ/số và bắt đầu bằng chữ (hợp lệ cho Swift module, target, bundle id)."
+
+  output_parent_input="$(prompt_optional "Thư mục chứa project ${C_DIM}(Enter: thư mục hiện tại)${C_0}: ")"
   if [[ -z "$output_parent_input" ]]; then
     output_parent="."
   else
     output_parent="$(expand_path "$output_parent_input")"
   fi
 
-  mkdir -p "$output_parent"
+  mkdir -p "$output_parent" 2>/dev/null || die "Không tạo được thư mục $(tilde "$output_parent")"
   output_parent_abs="$(cd "$output_parent" && pwd -P)"
   target_dir="$output_parent_abs/$new_project_name"
+  workspace_path="$target_dir/$new_project_name.xcworkspace"
+  [[ ! -e "$target_dir" ]] || die "Đã tồn tại: $(tilde "$target_dir")"
 
-  if [[ -e "$target_dir" ]]; then
-    echo "Đường dẫn đã tồn tại: $target_dir"
+  title "Tạo $new_project_name" "$(tilde "$target_dir")"
+  log_dir="$(mktemp -d -t make-project)"
+
+  if ! run_logged "Đang clone template…" "$log_dir/clone.log" clone_project_template "$target_dir"; then
+    bad "Không clone được $TEMPLATE_REPO. Log: $log_dir/clone.log"
+    fix "Kiểm tra quyền truy cập GitHub bằng SSH: ssh -T git@github.com"
     exit 1
   fi
+  base_version="$(sed -n 's/.*"baseVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$target_dir/$BASE_PROJECT_INFO_FILE" 2>/dev/null | head -1)"
+  ok "Template $BASE_PROJECT_NAME${base_version:+ $base_version} ${C_DIM}· $ELAPSED${C_0}"
 
-  echo "Đang tạo project tại: $target_dir"
+  run_logged "Đang đổi tên project…" "$log_dir/rename.log" rename_project "$target_dir" "$new_project_name" \
+    || die "Đổi tên project lỗi. Log: $log_dir/rename.log"
+  ok "Đổi tên $BASE_PROJECT_NAME → $new_project_name ${C_DIM}· $ELAPSED${C_0}"
 
-  progress "Đang clone template project"
-  clone_project_template "$target_dir"
+  if [[ "${SCAFFOLD_SKIP_POD_INSTALL:-}" == "1" ]]; then
+    warn "Bỏ qua pod install ${C_DIM}· SCAFFOLD_SKIP_POD_INSTALL=1${C_0}"
+  elif [[ ! -f "$target_dir/Podfile" ]]; then
+    :
+  elif ! command -v pod >/dev/null 2>&1; then
+    warn "Chưa có CocoaPods. Cài CocoaPods rồi chạy:"
+    fix "cd \"$(tilde "$target_dir")\" && pod install"
+    warnings=$((warnings + 1))
+  elif run_logged "Đang chạy pod install…" "$log_dir/pod.log" install_pods "$target_dir"; then
+    ok "pod install ${C_DIM}· $ELAPSED${C_0}"
+  else
+    bad "pod install lỗi. Log: $log_dir/pod.log"
+    fix "cd \"$(tilde "$target_dir")\" && pod install"
+    warnings=$((warnings + 1))
+  fi
 
-  progress "Đang đổi tên file/folder project"
-  rename_project_paths "$target_dir" "$new_project_name"
+  if [[ -d "$workspace_path" ]]; then
+    open "$workspace_path"
+    ok "Đã mở $new_project_name.xcworkspace"
+  else
+    warn "Không có $new_project_name.xcworkspace để mở"
+    warnings=$((warnings + 1))
+  fi
 
-  progress "Đang cập nhật reference trong source/config"
-  replace_project_name_in_files "$target_dir" "$new_project_name"
-
-  progress "Đang ghi thông tin base version"
-  write_base_project_info "$target_dir"
-
-  progress "Đang cài đặt CocoaPods"
-  install_pods_if_possible "$target_dir"
-
-  progress "Đang mở workspace"
-  open_workspace "$target_dir" "$new_project_name"
-
-  echo "Tạo project hoàn tất."
-  echo "Workspace: $target_dir/$new_project_name.xcworkspace"
-  echo "Base info: $target_dir/$BASE_PROJECT_INFO_FILE"
-  echo ""
-  echo "============================================================"
-  echo "Vui lòng đọc README.md trước khi bắt đầu code."
-  echo "============================================================"
+  echo
+  if (( warnings == 0 )); then
+    rm -rf "$log_dir"
+    echo "${C_GRN}${C_B}Tạo project xong.${C_0} Đọc ${C_B}README.md${C_0} trước khi bắt đầu code."
+  else
+    echo "${C_YEL}${C_B}Đã tạo project.${C_0} Xử lý $warnings mục ở trên, rồi đọc ${C_B}README.md${C_0} trước khi code."
+  fi
+  echo "  ${C_DIM}$(tilde "$target_dir")${C_0}"
 }
 
 main "$@"
