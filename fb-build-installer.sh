@@ -300,11 +300,14 @@ select_xcode() {
   local want="${OPT_XCODE:-${CFG_XCODE:-}}" source="--xcode" app installed
   [[ -n "$OPT_XCODE" ]] || source="\"xcode\" trong $CONFIG_NAME; đổi bằng: fb-build init --xcode <version>"
   installed="$(list_xcodes)"
+  if [[ -z "$installed" ]] && ! xcodebuild -version >/dev/null 2>&1; then
+    bad "Chưa cài Xcode. Cài Xcode từ App Store rồi chạy lại."
+    return 1
+  fi
   if [[ -z "$want" ]]; then
     xcodebuild -version >/dev/null 2>&1 && return 0
     app="$(cut -f2 <<< "$installed" | sed -n 1p)"
     [[ -n "$app" ]] || return 0
-    warn "Xcode mặc định là $(default_developer_dir), không phải Xcode. Dùng bản mới nhất: $app"
   elif [[ "$want" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
     app="$(awk -F'\t' -v w="$(trim_version "$want")" '
       { v = $1; while (v ~ /\.0$/) v = substr(v, 1, length(v) - 2) }
@@ -567,7 +570,8 @@ cmd_init() {
   CFG_WORKSPACE= CFG_PROJECT=
   step "Đang khởi tạo cấu hình build cho $(basename "$TOP")"
   CFG_XCODE=
-  select_xcode && check_xcode || fail "Cần Xcode để đọc danh sách scheme."
+  # select_xcode and check_xcode already say what is wrong.
+  select_xcode && check_xcode || exit 1
   detect_container || fail "Repo cần có đúng một .xcworkspace, hoặc đúng một .xcodeproj nếu không có workspace."
   ok "${WORKSPACE:-$PROJECT}"
 
@@ -607,9 +611,24 @@ cmd_init() {
   local app_id project_id
   app_id="$(plist_get GOOGLE_APP_ID "$plist")" || fail "$plist không có GOOGLE_APP_ID"
   project_id="$(plist_get PROJECT_ID "$plist" || true)"
-  ok "Firebase plist: $plist → project $project_id, app $app_id"
+  ok "Firebase plist: $plist"
   if ! git ls-files --error-unmatch -- "$plist" >/dev/null 2>&1; then
     warn "$plist không có trong git. Các dev khác cần đặt file này đúng đường dẫn trên máy họ."
+  fi
+  # Builds go to every tester group, so show who that is. Not being able to
+  # read them does not stop init: the build checks Firebase access again.
+  local groups
+  if ! command -v "$FIREBASE" >/dev/null 2>&1; then
+    warn "Chưa cài Firebase CLI nên không đọc được nhóm tester. Cài bằng: brew install firebase-cli"
+  elif firebase_json appdistribution:groups:list --project "$project_id"; then
+    groups="$(tester_groups)"
+    if [[ -n "$groups" ]]; then
+      ok "Nhóm tester: ${groups//,/, }"
+    else
+      warn "Project $project_id chưa có nhóm tester nào: build chỉ được upload, không gửi cho ai"
+    fi
+  else
+    warn "Không đọc được nhóm tester của project $project_id${FB_ERROR:+: $FB_ERROR}"
   fi
 
   local tmp
@@ -755,10 +774,15 @@ check_firebase_access() {
     return
   fi
   # The build goes to every tester group of the project.
-  TESTER_GROUPS="$(plutil -extract result.groups xml1 -o - "$FB_RESULT" 2>/dev/null | xml_strings \
-    | sed -n 's|^projects/[^/]*/groups/||p' | paste -sd, - || true)"
+  TESTER_GROUPS="$(tester_groups)"
   ok "Firebase CLI: $account | gửi cho: $(recipients)"
   [[ -n "$TESTER_GROUPS" ]] || warn "Project $PROJECT_ID chưa có nhóm tester nào: build chỉ được upload, không gửi cho ai"
+}
+
+# Group aliases, comma-separated, from FB_RESULT of appdistribution:groups:list.
+tester_groups() {
+  plutil -extract result.groups xml1 -o - "$FB_RESULT" 2>/dev/null | xml_strings \
+    | sed -n 's|^projects/[^/]*/groups/||p' | paste -sd, - || true
 }
 
 recipients() {
