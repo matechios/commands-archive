@@ -183,6 +183,9 @@ Build app iOS trong repo hiện tại và upload lên Firebase App Distribution.
 
 Tùy chọn khi build:
   -m, --message TEXT      ghi chú cho tester trong release notes
+  -v, --app-version X     version của bản build (MARKETING_VERSION), vd 1.2.0
+  -b, --build-number N    build number (CURRENT_PROJECT_VERSION), vd 42
+                          Mặc định: theo project. Không sửa file nào trong repo.
       --dry-run           chỉ kiểm tra và in release notes dự kiến, không build
 
 Tùy chọn của init:
@@ -209,6 +212,7 @@ case "${1:-}" in
 esac
 
 OPT_MESSAGE= OPT_XCODE= DRY_RUN=false
+OPT_APP_VERSION= OPT_BUILD_NUMBER=
 OPT_SCHEME= OPT_PLIST=
 
 need_arg() { [[ $# -ge 2 ]] || fail "Thiếu giá trị cho $1"; }
@@ -219,12 +223,21 @@ while (($#)); do
     *:-h | *:--help) usage; exit 0 ;;
     run:-m | run:--message) need_arg "$@"; OPT_MESSAGE="$2"; shift 2 ;;
     run:--dry-run) DRY_RUN=true; shift ;;
+    run:-v | run:--app-version) need_arg "$@"; OPT_APP_VERSION="$2"; shift 2 ;;
+    run:-b | run:--build-number) need_arg "$@"; OPT_BUILD_NUMBER="$2"; shift 2 ;;
     init:--scheme) need_arg "$@"; OPT_SCHEME="$2"; shift 2 ;;
     init:--plist) need_arg "$@"; OPT_PLIST="$2"; shift 2 ;;
     init:--xcode) need_arg "$@"; OPT_XCODE="$2"; shift 2 ;;
     *) bad_arg "$1" ;;
   esac
 done
+
+# App Store Connect rules: up to three period-separated integers.
+version_re='^[0-9]+(\.[0-9]+){0,2}$'
+[[ -z "$OPT_APP_VERSION" || "$OPT_APP_VERSION" =~ $version_re ]] \
+  || fail "--app-version phải là tối đa 3 số cách nhau bởi dấu chấm, vd 1.2.0 (nhận: $OPT_APP_VERSION)"
+[[ -z "$OPT_BUILD_NUMBER" || "$OPT_BUILD_NUMBER" =~ $version_re ]] \
+  || fail "--build-number phải là số, hoặc tối đa 3 số cách nhau bởi dấu chấm, vd 42 (nhận: $OPT_BUILD_NUMBER)"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -820,6 +833,11 @@ export_method() {
 }
 
 stage_archive() {
+  # Build settings on the command line apply to every target, so the app and
+  # its extensions get the same version, as App Store Connect requires.
+  local -a overrides=()
+  [[ -z "$OPT_APP_VERSION" ]] || overrides+=("MARKETING_VERSION=$OPT_APP_VERSION")
+  [[ -z "$OPT_BUILD_NUMBER" ]] || overrides+=("CURRENT_PROJECT_VERSION=$OPT_BUILD_NUMBER")
   step "Archive $SCHEME ($CONFIGURATION)"
   run_xcodebuild "$LOG_DIR/archive.log" \
     "${CONTAINER[@]}" \
@@ -829,10 +847,21 @@ stage_archive() {
     -archivePath "$ARCHIVE_PATH" \
     -derivedDataPath "$DERIVED_DATA" \
     -allowProvisioningUpdates \
+    ${overrides[@]+"${overrides[@]}"} \
     archive
 
   APP_VERSION="$(plist_get ApplicationProperties:CFBundleShortVersionString "$ARCHIVE_PATH/Info.plist" || echo "?")"
   APP_BUILD="$(plist_get ApplicationProperties:CFBundleVersion "$ARCHIVE_PATH/Info.plist" || echo "?")"
+  # The override only reaches Info.plist values written as $(MARKETING_VERSION)
+  # and $(CURRENT_PROJECT_VERSION), not hard-coded ones.
+  if [[ -n "$OPT_APP_VERSION" && "$APP_VERSION" != "$OPT_APP_VERSION" ]]; then
+    hint "Info.plist của app cần ghi CFBundleShortVersionString là \$(MARKETING_VERSION) thì --app-version mới có tác dụng."
+    fail "Archive có version $APP_VERSION, không phải $OPT_APP_VERSION"
+  fi
+  if [[ -n "$OPT_BUILD_NUMBER" && "$APP_BUILD" != "$OPT_BUILD_NUMBER" ]]; then
+    hint "Info.plist của app cần ghi CFBundleVersion là \$(CURRENT_PROJECT_VERSION) thì --build-number mới có tác dụng."
+    fail "Archive có build number $APP_BUILD, không phải $OPT_BUILD_NUMBER"
+  fi
   ok "Archive: $APP_VERSION ($APP_BUILD)"
 
   verify_firebase_config
@@ -1012,7 +1041,7 @@ cmd_run() {
     step "Release notes dự kiến"
     local preview
     preview="$(mktemp -t fb-build-notes)"
-    write_release_notes "$preview" "<version> (<build>)"
+    write_release_notes "$preview" "${OPT_APP_VERSION:-<version>} (${OPT_BUILD_NUMBER:-<build>})"
     cat "$preview"
     rm -f "$preview"
     echo
