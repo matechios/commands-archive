@@ -148,7 +148,7 @@ cat <<'__FB_BUILD_TOOL__'
 set -euo pipefail
 
 # Bump TOOL_VERSION for every release.
-TOOL_VERSION=1.0
+TOOL_VERSION=1.1
 CONFIG_NAME=.fb-build.json
 OUT_ROOT="${FB_BUILD_HOME:-$HOME/Library/Developer/fb-build}"
 KEEP_RUNS=5
@@ -551,10 +551,8 @@ archive_bundle_ids() {
 # ---------------------------------------------------------------------------
 cmd_init() {
   goto_repo_root
-  local again=
-  [[ ! -e "$CONFIG" ]] || again=" lại"
   CFG_WORKSPACE= CFG_PROJECT=
-  step "Tạo$again $CONFIG_NAME cho $(basename "$TOP")"
+  step "Đang khởi tạo cấu hình build cho $(basename "$TOP")"
   CFG_XCODE=
   select_xcode && check_xcode || fail "Cần Xcode để đọc danh sách scheme."
   detect_container || fail "Repo cần có đúng một .xcworkspace, hoặc đúng một .xcodeproj nếu không có workspace."
@@ -619,11 +617,7 @@ cmd_init() {
   plutil -convert json -r -o - "$tmp" | sed 's|\\/|/|g' > "$CONFIG"
   rm -f "$tmp"
 
-  step "Đã tạo$again $CONFIG_NAME"
-  cat "$CONFIG"
-  echo
-  echo "Commit file này để cả team dùng chung:"
-  echo "  git add $CONFIG_NAME && git commit -m \"Add fb-build config\""
+  step "Khởi tạo cấu hình build thành công"
 }
 
 # ---------------------------------------------------------------------------
