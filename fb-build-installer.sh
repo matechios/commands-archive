@@ -47,9 +47,27 @@ main() {
   case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
     *)
-      warn "${BIN_DIR/#$HOME/~} chưa có trong PATH. Thêm vào ~/.zshrc rồi mở lại Terminal:"
-      fix "echo 'export PATH=\"${BIN_DIR/#$HOME/\$HOME}:\$PATH\"' >> ~/.zshrc"
-      warnings=$((warnings + 1))
+      # Add BIN_DIR to the shell's startup file. That cannot reach the
+      # Terminal running this installer, so the dev still opens a new one.
+      path_dir="${BIN_DIR/#$HOME/\$HOME}"
+      case "${SHELL##*/}" in
+        zsh)  rc="$HOME/.zshrc" ;;
+        bash) rc="$HOME/.bash_profile" ;;
+        *)    rc= ;;
+      esac
+      if [[ -z "$rc" ]]; then
+        warn "${BIN_DIR/#$HOME/~} chưa có trong PATH. Thêm dòng này vào file cấu hình shell rồi mở lại Terminal:"
+        fix "export PATH=\"$path_dir:\$PATH\""
+        warnings=$((warnings + 1))
+      elif grep -qsF -e "$BIN_DIR" -e "$path_dir" "$rc"; then
+        ok "${rc/#$HOME/~} đã có ${BIN_DIR/#$HOME/~} trong PATH ${C_DIM}· mở Terminal mới hoặc chạy: exec ${SHELL##*/}${C_0}"
+      elif printf '\n# fb-build\nexport PATH="%s:$PATH"\n' "$path_dir" >> "$rc"; then
+        ok "Đã thêm ${BIN_DIR/#$HOME/~} vào PATH trong ${rc/#$HOME/~} ${C_DIM}· mở Terminal mới hoặc chạy: exec ${SHELL##*/}${C_0}"
+      else
+        warn "Không ghi được ${rc/#$HOME/~}. Thêm dòng này vào đó rồi mở lại Terminal:"
+        fix "export PATH=\"$path_dir:\$PATH\""
+        warnings=$((warnings + 1))
+      fi
       ;;
   esac
 
