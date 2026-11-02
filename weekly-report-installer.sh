@@ -1,120 +1,87 @@
 #!/usr/bin/env bash
-# weekly-report-installer.sh — Cài đặt ios-weekly-report vào repo hiện tại
-# Usage: bash weekly-report-installer.sh (chạy từ thư mục gốc của repo)
+# Cài ios-weekly-report vào git repo hiện tại: commit-msg hook, report tool
+# trong .team-tools/weekly-report/, skill và slash command cho Claude/Codex.
+#   bash weekly-report-installer.sh   (chạy từ thư mục gốc của repo)
+#
+# Cũng chạy được qua pipe: curl -fsSL <url> | bash
+# Khi không có bộ tool cạnh file này, installer tự clone từ TOOLS_REPO_URL.
+set -euo pipefail
 
-set -e
-
-TOOL_VERSION="1.4"
+TOOL_VERSION="1.3"
 TOOLS_REPO_URL="${TOOLS_REPO_URL:-https://github.com/matechios/ios-weekly-report.git}"
-TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(pwd)"
-GIT_HOOKS_DIR="$REPO_DIR/.git/hooks"
-TEAM_TOOLS_DIR="$REPO_DIR/.team-tools"
-SCRIPTS_TARGET="$TEAM_TOOLS_DIR/weekly-report"
-CODEX_SKILL_TARGET="$REPO_DIR/.codex/skills/weekly-report"
-CLAUDE_SKILL_TARGET="$REPO_DIR/.claude/skills/weekly-report"
-CLAUDE_COMMANDS_TARGET="$REPO_DIR/.claude/commands"
-TMP_TOOLS_DIR=""
 
-GREEN="\033[92m"
-YELLOW="\033[93m"
-RED="\033[91m"
-CYAN="\033[96m"
-BOLD="\033[1m"
-RESET="\033[0m"
+main() {
+  if [[ -t 1 ]]; then
+    C_RED=$'\033[31m' C_YEL=$'\033[33m' C_GRN=$'\033[32m' C_BLU=$'\033[34m' C_DIM=$'\033[2m' C_B=$'\033[1m' C_0=$'\033[0m'
+  else
+    C_RED= C_YEL= C_GRN= C_BLU= C_DIM= C_B= C_0=
+  fi
+  ok()   { echo "  ${C_GRN}✓${C_0} $*"; }
+  warn() { echo "  ${C_YEL}!${C_0} $*"; }
+  bad()  { echo "  ${C_RED}✗${C_0} $*"; }
+  fix()  { echo "    ${C_DIM}$*${C_0}"; }
+  die()  { bad "$*"; exit 1; }
 
-STEP_TOTAL=5
+  REPO_DIR="$(pwd)"
+  TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")" && pwd)"
+  GIT_HOOKS_DIR="$REPO_DIR/.git/hooks"
+  TEAM_TOOLS_DIR="$REPO_DIR/.team-tools"
+  SCRIPTS_TARGET="$TEAM_TOOLS_DIR/weekly-report"
+  CODEX_SKILL_TARGET="$REPO_DIR/.codex/skills/weekly-report"
+  CLAUDE_SKILL_TARGET="$REPO_DIR/.claude/skills/weekly-report"
+  CLAUDE_COMMANDS_TARGET="$REPO_DIR/.claude/commands"
 
-step() {
-    echo -e "${BOLD}[$1/${STEP_TOTAL}]${RESET} $2"
-}
+  echo
+  echo "${C_BLU}==>${C_0} ${C_B}Cài đặt ios-weekly-report $TOOL_VERSION${C_0}"
+  echo "    ${C_DIM}${REPO_DIR/#$HOME/~}${C_0}"
+  echo
 
-detail() {
-    echo -e "      $1"
-}
+  [[ -d "$REPO_DIR/.git" ]] \
+    || die "Thư mục hiện tại không phải git repo. Chạy lại file cài đặt từ thư mục gốc của project."
 
-fail() {
-    echo -e "${RED}${BOLD}Lỗi:${RESET} $1" >&2
-    [ -n "$2" ] && echo -e "      $2" >&2
-    exit 1
-}
-
-cleanup() {
-    if [ -n "$TMP_TOOLS_DIR" ] && [ -d "$TMP_TOOLS_DIR" ]; then
-        rm -rf "$TMP_TOOLS_DIR"
-    fi
-}
-trap cleanup EXIT
-
-# Kiểm tra git repo
-if [ ! -d "$REPO_DIR/.git" ]; then
-    fail "Thư mục hiện tại không phải git repo." "Chạy lại installer từ thư mục gốc của project."
-fi
-
-if [ ! -f "$TOOLS_DIR/hooks/commit-msg" ] || \
-   [ ! -f "$TOOLS_DIR/codex-skills/weekly-report/SKILL.md" ] || \
-   [ ! -f "$TOOLS_DIR/claude-skills/weekly-report/SKILL.md" ] || \
-   [ ! -f "$TOOLS_DIR/claude-commands/report.md" ]; then
-    echo "Đang tải bộ tool từ $TOOLS_REPO_URL..."
-
-    if ! command -v git >/dev/null 2>&1; then
-        fail "Không tìm thấy git." "Cần cài git để installer tự tải bộ tool."
-    fi
-
+  if [[ ! -f "$TOOLS_DIR/scripts/report.py" || ! -f "$TOOLS_DIR/hooks/commit-msg" ||
+        ! -f "$TOOLS_DIR/claude-skills/weekly-report/SKILL.md" ||
+        ! -f "$TOOLS_DIR/codex-skills/weekly-report/SKILL.md" ||
+        ! -f "$TOOLS_DIR/claude-commands/report.md" ]]; then
+    command -v git >/dev/null 2>&1 || die "Không tìm thấy git. Cần git để tải bộ tool."
     TMP_TOOLS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ios-weekly-report.XXXXXX")"
-    git clone --depth 1 "$TOOLS_REPO_URL" "$TMP_TOOLS_DIR" >/dev/null 2>&1 || {
-        fail "Không clone được ios-weekly-report từ GitHub." "Kiểm tra kết nối mạng hoặc đặt lại TOOLS_REPO_URL."
-    }
+    trap 'rm -rf "$TMP_TOOLS_DIR"' EXIT
+    [[ ! -t 1 ]] || printf '    %s' "${C_DIM}Đang tải bộ tool…${C_0}"
+    if ! git clone --quiet --depth 1 "$TOOLS_REPO_URL" "$TMP_TOOLS_DIR" >/dev/null 2>&1; then
+      [[ ! -t 1 ]] || printf '\n'
+      bad "Không tải được bộ tool từ $TOOLS_REPO_URL"
+      fix "Kiểm tra kết nối mạng và quyền truy cập repo, hoặc đặt lại TOOLS_REPO_URL."
+      exit 1
+    fi
+    [[ ! -t 1 ]] || printf '\r\033[K'
     TOOLS_DIR="$TMP_TOOLS_DIR"
-fi
+  fi
 
-echo ""
-echo -e "${BOLD}ios-weekly-report installer${RESET} v${TOOL_VERSION}"
-echo "Project: $REPO_DIR"
-echo ""
+  # Report tool. Bản cũ cài thẳng vào .team-tools/, bản mới nằm trong
+  # .team-tools/weekly-report/ để chừa chỗ cho các tool khác.
+  previous=
+  for old in "$SCRIPTS_TARGET/report.py" "$TEAM_TOOLS_DIR/report.py"; do
+    [[ -z "$previous" && -f "$old" ]] || continue
+    previous="$(sed -n 's/^TOOL_VERSION = "\(.*\)"/\1/p' "$old" | head -1)"
+  done
+  mkdir -p "$SCRIPTS_TARGET" 2>/dev/null || die "Không tạo được thư mục .team-tools/weekly-report/"
+  cp "$TOOLS_DIR/scripts/report.py" "$SCRIPTS_TARGET/report.py" \
+    || die "Không ghi được .team-tools/weekly-report/report.py"
+  rm -f "$TEAM_TOOLS_DIR/report.py"
+  if [[ -n "$previous" && "$previous" != "$TOOL_VERSION" ]]; then
+    ok "Report tool: cập nhật $previous → $TOOL_VERSION ${C_DIM}· .team-tools/weekly-report/${C_0}"
+  else
+    ok "Report tool $TOOL_VERSION ${C_DIM}· .team-tools/weekly-report/${C_0}"
+  fi
 
-# Copy scripts vào repo
-step 1 "Cài đặt report tool vào .team-tools/weekly-report/"
-mkdir -p "$SCRIPTS_TARGET"
-cp "$TOOLS_DIR/scripts/report.py" "$SCRIPTS_TARGET/"
-
-# Migrate từ bản cũ (<= v1.3) cài thẳng vào .team-tools/
-if [ -f "$TEAM_TOOLS_DIR/report.py" ]; then
-    rm -f "$TEAM_TOOLS_DIR/report.py"
-    detail "Đã xóa .team-tools/report.py bản cũ"
-fi
-if [ -f "$TEAM_TOOLS_DIR/.env" ] && [ ! -f "$SCRIPTS_TARGET/.env" ] && \
-   grep -q "ios-weekly-report config" "$TEAM_TOOLS_DIR/.env"; then
-    mv "$TEAM_TOOLS_DIR/.env" "$SCRIPTS_TARGET/.env"
-    detail "Đã chuyển .team-tools/.env sang .team-tools/weekly-report/.env"
-fi
-
-# Cài Codex skill local trong project
-step 2 "Cài đặt Codex skill"
-mkdir -p "$CODEX_SKILL_TARGET"
-cp "$TOOLS_DIR/codex-skills/weekly-report/SKILL.md" "$CODEX_SKILL_TARGET/SKILL.md"
-
-# Cài Claude skill và slash command local trong project
-step 3 "Cài đặt Claude skill và slash command /report"
-mkdir -p "$CLAUDE_SKILL_TARGET" "$CLAUDE_COMMANDS_TARGET"
-cp "$TOOLS_DIR/claude-skills/weekly-report/SKILL.md" "$CLAUDE_SKILL_TARGET/SKILL.md"
-cp "$TOOLS_DIR/claude-commands/report.md" "$CLAUDE_COMMANDS_TARGET/report.md"
-
-# Cài commit-msg hook
-step 4 "Cài đặt commit-msg hook"
-if [ -f "$GIT_HOOKS_DIR/commit-msg" ] && ! cmp -s "$TOOLS_DIR/hooks/commit-msg" "$GIT_HOOKS_DIR/commit-msg"; then
-    BACKUP="$GIT_HOOKS_DIR/commit-msg.backup.$(date +%Y%m%d%H%M%S)"
-    cp "$GIT_HOOKS_DIR/commit-msg" "$BACKUP"
-    detail "${YELLOW}Đã backup hook cũ: $BACKUP${RESET}"
-fi
-cp "$TOOLS_DIR/hooks/commit-msg" "$GIT_HOOKS_DIR/commit-msg"
-chmod +x "$GIT_HOOKS_DIR/commit-msg"
-
-# Tạo file .env nếu chưa có
-step 5 "Cấu hình project"
-if [ ! -f "$SCRIPTS_TARGET/.env" ]; then
-    detail "Đã tạo .team-tools/weekly-report/.env"
-    cat > "$SCRIPTS_TARGET/.env" << 'EOF'
+  env_file="$SCRIPTS_TARGET/.env"
+  if [[ -f "$env_file" ]]; then
+    ok "Cấu hình .team-tools/weekly-report/.env ${C_DIM}· giữ nguyên${C_0}"
+  elif [[ -f "$TEAM_TOOLS_DIR/.env" ]] && grep -q "ios-weekly-report config" "$TEAM_TOOLS_DIR/.env"; then
+    mv "$TEAM_TOOLS_DIR/.env" "$env_file" || die "Không chuyển được .team-tools/.env"
+    ok "Cấu hình .team-tools/weekly-report/.env ${C_DIM}· chuyển từ .team-tools/.env${C_0}"
+  else
+    cat > "$env_file" << 'EOF' || die "Không ghi được .team-tools/weekly-report/.env"
 # ── ios-weekly-report config ───────────────────────────────
 # Tên của bạn (override git config user.name)
 # REPORT_AUTHOR="Nguyen Van A"
@@ -126,49 +93,73 @@ SHEETS_WEBHOOK_URL="https://script.google.com/macros/s/AKfycbzIJt8MeIWavTEM_d0oY
 # REPORT_SECRET="change-me"
 
 EOF
-fi
+    ok "Cấu hình .team-tools/weekly-report/.env ${C_DIM}· tạo mới${C_0}"
+  fi
 
-# Thêm .team-tools/ vào .gitignore
-touch "$REPO_DIR/.gitignore"
-if ! grep -q "^.team-tools/$" "$REPO_DIR/.gitignore"; then
-    echo "" >> "$REPO_DIR/.gitignore"
-    echo "# ios-weekly-report" >> "$REPO_DIR/.gitignore"
-    echo ".team-tools/" >> "$REPO_DIR/.gitignore"
-    detail "Đã thêm .team-tools/ vào .gitignore"
-fi
+  mkdir -p "$GIT_HOOKS_DIR"
+  backup=
+  if [[ -f "$GIT_HOOKS_DIR/commit-msg" ]] && ! cmp -s "$TOOLS_DIR/hooks/commit-msg" "$GIT_HOOKS_DIR/commit-msg"; then
+    backup="$GIT_HOOKS_DIR/commit-msg.backup.$(date +%Y%m%d%H%M%S)"
+    cp "$GIT_HOOKS_DIR/commit-msg" "$backup"
+  fi
+  cp "$TOOLS_DIR/hooks/commit-msg" "$GIT_HOOKS_DIR/commit-msg" && chmod +x "$GIT_HOOKS_DIR/commit-msg" \
+    || die "Không ghi được .git/hooks/commit-msg"
+  if [[ -n "$backup" ]]; then
+    ok "commit-msg hook ${C_DIM}· đã backup hook cũ: ${backup#"$REPO_DIR"/}${C_0}"
+  else
+    ok "commit-msg hook ${C_DIM}· prefix TASK: / BUG: / UPDATE:${C_0}"
+  fi
 
-# Tạo alias gợi ý
-echo ""
-echo -e "${GREEN}${BOLD}Cài đặt hoàn tất.${RESET} Phiên bản: v${TOOL_VERSION}"
-echo ""
-echo -e "${CYAN}CÁCH SỬ DỤNG:${RESET}"
-echo ""
-echo -e "  ${BOLD}Commit (tự động validate format):${RESET}"
-echo -e "    git commit -m \"TASK: Mô tả công việc\""
-echo -e "    git commit -m \"BUG: Sửa lỗi gì đó\""
-echo -e "    git commit -m \"UPDATE: Cập nhật phần hiện có\""
-echo ""
-echo -e "  ${BOLD}Dùng AI generate report:${RESET}"
-echo -e "    Mở Codex hoặc Claude trong repo này và nhập đúng 3 dòng đầu bắt buộc."
-echo -e "    Agent sẽ đọc commit/diff trong tuần và generate cột Summary."
-echo -e "    Dòng 2/3 sẽ được parse vào cột Note."
-echo -e "    Dòng 1: yêu cầu báo cáo để mapping skill, ví dụ report, báo cáo tuần W30"
-echo -e "    Dòng 2: Vấn đề; nếu có nhiều ý thì cách nhau bằng dấu ;"
-echo -e "    Dòng 3: Plan tuần tới; nếu có nhiều ý thì cách nhau bằng dấu ;"
-echo -e "    Dòng 4+: optional, ghi thêm dưới heading Note:"
-echo ""
-echo -e "    Ví dụ:"
-echo -e "      báo cáo tuần W30"
-echo -e "      Không có blocker; Cần chờ review API"
-echo -e "      Hoàn tất flow thanh toán; Bổ sung test webhook"
-echo ""
-echo -e "    Nếu thiếu dòng 2/dòng 3, tool sẽ yêu cầu nhập lại."
-echo -e "    Preview/xem trước: thêm preview hoặc xem trước ở dòng 1."
-echo -e "    Claude slash command: /report"
-echo ""
-echo -e "  ${BOLD}Chạy thủ công nếu không dùng AI:${RESET}"
-echo -e "    python .team-tools/weekly-report/report.py             # gửi lên Google Sheets"
-echo -e "    python .team-tools/weekly-report/report.py --dry-run   # preview/xem trước, không gửi"
-echo -e "    python .team-tools/weekly-report/report.py --performance-file /path/to/summary.txt"
-echo -e "    python .team-tools/weekly-report/report.py --note-file /path/to/report-prompt.txt"
-echo ""
+  mkdir -p "$CLAUDE_SKILL_TARGET" "$CLAUDE_COMMANDS_TARGET" "$CODEX_SKILL_TARGET"
+  cp "$TOOLS_DIR/claude-skills/weekly-report/SKILL.md" "$CLAUDE_SKILL_TARGET/SKILL.md" \
+    && cp "$TOOLS_DIR/claude-commands/report.md" "$CLAUDE_COMMANDS_TARGET/report.md" \
+    || die "Không ghi được skill cho Claude trong .claude/"
+  ok "Claude: skill weekly-report, slash command /report"
+  cp "$TOOLS_DIR/codex-skills/weekly-report/SKILL.md" "$CODEX_SKILL_TARGET/SKILL.md" \
+    || die "Không ghi được skill cho Codex trong .codex/"
+  ok "Codex: skill weekly-report"
+
+  touch "$REPO_DIR/.gitignore"
+  if ! grep -qxF ".team-tools/" "$REPO_DIR/.gitignore"; then
+    printf '\n# ios-weekly-report\n.team-tools/\n' >> "$REPO_DIR/.gitignore"
+    ok "Đã thêm .team-tools/ vào .gitignore"
+  fi
+
+  warnings=0
+  if ! command -v python3 >/dev/null 2>&1; then
+    bad "Chưa có Python 3. Cài bằng:"
+    fix "xcode-select --install"
+    warnings=$((warnings + 1))
+  elif ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 7))' 2>/dev/null; then
+    bad "$(python3 --version 2>&1) quá cũ, report tool cần Python 3.7 trở lên."
+    warnings=$((warnings + 1))
+  else
+    ok "$(python3 --version 2>&1)"
+  fi
+
+  author="$(git -C "$REPO_DIR" config user.name 2>/dev/null || true)"
+  if [[ -n "$author" ]]; then
+    ok "Git author: $author"
+  else
+    warn "Chưa đặt git author, report sẽ không lọc được commit của bạn. Chạy:"
+    fix "git config --global user.name \"Tên của bạn\""
+    warnings=$((warnings + 1))
+  fi
+
+  echo
+  if (( warnings == 0 )); then
+    echo "${C_GRN}${C_B}Cài đặt xong.${C_0} Cuối tuần mở Claude (${C_B}/report${C_0}) hoặc Codex trong repo này và nhập:"
+  else
+    echo "${C_YEL}${C_B}Đã cài ios-weekly-report.${C_0} Xử lý $warnings mục ở trên. Cuối tuần mở Claude (${C_B}/report${C_0}) hoặc Codex và nhập:"
+  fi
+  echo
+  echo "    report                                    ${C_DIM}# thêm preview để xem trước${C_0}"
+  echo "    Không có blocker; Cần chờ review API      ${C_DIM}# vấn đề, cách nhau bằng ;${C_0}"
+  echo "    Hoàn tất flow thanh toán; Bổ sung test    ${C_DIM}# plan tuần tới${C_0}"
+  echo
+  echo "${C_DIM}Chạy tay: python3 .team-tools/weekly-report/report.py --dry-run${C_0}"
+}
+
+# main chạy ở dòng cuối nên bash đọc hết file trước khi làm gì. Nhờ vậy
+# `curl … | bash` không chạy dở khi tải file bị ngắt giữa chừng.
+main "$@"
