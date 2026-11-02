@@ -148,14 +148,17 @@ EOF
 
   echo
   if (( warnings == 0 )); then
-    echo "${C_GRN}${C_B}Cài đặt xong.${C_0} Cuối tuần mở Claude (${C_B}/report${C_0}) hoặc Codex trong repo này và nhập:"
+    echo "${C_GRN}${C_B}Cài đặt xong.${C_0} Để báo cáo tuần, nhập vào Claude hoặc Codex trong repo này:"
   else
-    echo "${C_YEL}${C_B}Đã cài ios-weekly-report.${C_0} Xử lý $warnings mục ở trên. Cuối tuần mở Claude (${C_B}/report${C_0}) hoặc Codex và nhập:"
+    echo "${C_YEL}${C_B}Đã cài ios-weekly-report.${C_0} Xử lý $warnings mục ở trên. Để báo cáo tuần, nhập vào Claude hoặc Codex:"
   fi
   echo
-  echo "    report                                    ${C_DIM}# thêm preview để xem trước${C_0}"
-  echo "    Không có blocker; Cần chờ review API      ${C_DIM}# vấn đề, cách nhau bằng ;${C_0}"
-  echo "    Hoàn tất flow thanh toán; Bổ sung test    ${C_DIM}# plan tuần tới${C_0}"
+  echo "    báo cáo tuần [preview] [W24] [của Nguyen Van A]"
+  echo "    Vấn đề 1; Vấn đề 2"
+  echo "    Plan tuần tới 1; Plan tuần tới 2"
+  echo "    [Note thêm 1]"
+  echo
+  echo "${C_DIM}Phần trong [...] là optional.${C_0}"
   echo
   echo "${C_DIM}Chạy tay: python3 .team-tools/weekly-report/report.py --dry-run${C_0}"
 }
