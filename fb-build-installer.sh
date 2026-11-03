@@ -89,8 +89,12 @@ main() {
     ok "Xcode $xcodes"
   fi
 
-  if ! command -v firebase >/dev/null 2>&1 && command -v brew >/dev/null 2>&1 && [[ -t 0 ]]; then
-    read -r -p "  ${C_YEL}?${C_0} Chưa có Firebase CLI. Cài bằng Homebrew? [Y/n] " answer
+  # Ask on the terminal: under curl | bash, stdin is the script.
+  if ! command -v firebase >/dev/null 2>&1 && command -v brew >/dev/null 2>&1 \
+    && { exec 3</dev/tty; } 2>/dev/null; then
+    answer=
+    read -r -p "  ${C_YEL}?${C_0} Chưa có Firebase CLI. Cài bằng Homebrew? [Y/n] " answer <&3 || true
+    exec 3<&-
     if [[ ! "$answer" =~ ^[Nn] ]]; then
       log="$(mktemp -t fb-build-brew)"
       printf '    %s' "${C_DIM}Đang cài Firebase CLI…${C_0}"
