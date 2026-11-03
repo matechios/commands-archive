@@ -97,12 +97,9 @@ main() {
     exec 3<&-
     if [[ ! "$answer" =~ ^[Nn] ]]; then
       log="$(mktemp -t fb-build-brew)"
-      printf '    %s' "${C_DIM}Đang cài Firebase CLI…${C_0}"
-      if brew install firebase-cli > "$log" 2>&1; then
-        printf '\r\033[K'
+      if spin "Đang cài Firebase CLI…" "$log" brew install firebase-cli; then
         rm -f "$log"
       else
-        printf '\n'
         bad "Cài Firebase CLI lỗi. Log: $log"
       fi
     fi
@@ -189,6 +186,32 @@ decrypt_lark() {
   LARK_PW="$1" /usr/bin/openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -a -A \
     -pass env:LARK_PW -in "$2" -out "$3" 2>/dev/null \
     && plutil -convert xml1 -o /dev/null "$3" 2>/dev/null
+}
+
+# Runs a command with its output only in a log file, showing a spinner and the
+# elapsed time before the label meanwhile. Returns the command's exit status.
+spin() {
+  local label="$1" log="$2" pid start=$SECONDS i=0 status=0
+  local -a frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+  shift 2
+  "$@" > "$log" 2>&1 &
+  pid=$!
+  # A script's background commands ignore Ctrl+C, so pass it on.
+  trap 'kill "$pid" 2>/dev/null; exit 130' INT TERM
+  if [[ -t 1 ]]; then
+    while kill -0 "$pid" 2>/dev/null; do
+      printf '\r  %s %s %s' "${C_DIM}${frames[i % 10]}${C_0}" "$label" \
+        "${C_DIM}$(( (SECONDS - start) / 60 )):$(printf '%02d' $(( (SECONDS - start) % 60 )))${C_0}"
+      i=$((i + 1))
+      sleep 0.1
+    done
+    printf '\r\033[K'
+  else
+    echo "  $label"
+  fi
+  wait "$pid" || status=$?
+  trap - INT TERM
+  return $status
 }
 
 lark_skipped() {
