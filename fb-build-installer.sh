@@ -773,7 +773,7 @@ cmd_init() {
     || warn "$CONFIG_NAME chưa được gitignore. Thêm .team-tools/ vào .gitignore, hoặc commit file này."
 
   step "Khởi tạo cấu hình build thành công"
-  next_step "build và upload, vd: ${C_B}fb-build -m \"Sửa lỗi đăng nhập\" -v 1.2.0 -b 42${C_0}"
+  next_step "build và upload, vd: ${C_B}fb-build -v 1.2.0 -b 42${C_0}"
   echo "  -m TEXT      ghi chú cho tester trong release notes"
   echo "  -v VERSION   version, mặc định theo project"
   echo "  -b BUILD     build number, mặc định theo project"
