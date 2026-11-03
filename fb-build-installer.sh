@@ -178,7 +178,7 @@ install_lark_webhooks() {
   # mktemp made it 0600, so the webhooks stay readable by this user only.
   mv -f "$out" "$LARK_TARGET"
   teams="$(plutil -convert xml1 -o - "$LARK_TARGET" | grep -c '<key>webhook</key>' || true)"
-  ok "Lark webhooks: $teams team ${C_DIM}· ${LARK_TARGET/#$HOME/~}${C_0}"
+  ok "Lark webhooks: $teams team id"
 }
 
 # Same cipher as the sync workflow. The password goes through the environment,
