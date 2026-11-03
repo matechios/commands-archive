@@ -51,8 +51,8 @@ main() {
 
   install_lark_webhooks
 
-  # What the dev still has to do, in order, as "command<TAB>note". The note
-  # marks the steps done once.
+  # What the dev still has to do, in order, as "command<TAB>note[<TAB>option]".
+  # The note marks the steps done once; the option line is printed below.
   todo=()
   once="chỉ làm 1 lần"
   case ":$PATH:" in
@@ -83,8 +83,6 @@ main() {
   if [[ -z "$xcodes" ]]; then
     bad "Chưa cài Xcode"
     todo=("Cài Xcode từ App Store rồi chạy lại lệnh cài đặt này"$'\t'"$once" ${todo[@]+"${todo[@]}"})
-  elif [[ "$xcodes" == *", "* ]]; then
-    ok "Xcode $xcodes ${C_DIM}· chọn bản để build bằng fb-build init --xcode <version>${C_0}"
   else
     ok "Xcode $xcodes"
   fi
@@ -122,7 +120,9 @@ main() {
     fi
     todo+=("$login")
   fi
-  todo+=("Trong thư mục repo app: fb-build init"$'\t'"chỉ làm 1 lần cho mỗi repo")
+  xcode_opt="--xcode VERSION   chọn Xcode để build, mặc định bản Xcode đang dùng"
+  [[ -z "$xcodes" ]] || xcode_opt+=" (đã cài: $xcodes)"
+  todo+=("Trong thư mục repo app: fb-build init"$'\t'"chỉ làm 1 lần cho mỗi repo"$'\t'"$xcode_opt")
 
   echo
   if (( ${#todo[@]} == 1 )); then
@@ -134,7 +134,9 @@ main() {
   n=0
   for item in "${todo[@]}"; do
     n=$((n + 1))
-    echo "  $n. ${C_B}${item%%$'\t'*}${C_0} ${C_DIM}(${item#*$'\t'})${C_0}"
+    IFS=$'\t' read -r cmd note opt <<< "$item"
+    echo "  $n. ${C_B}$cmd${C_0} ${C_DIM}($note)${C_0}"
+    [[ -z "$opt" ]] || echo "     $opt"
   done
 }
 
@@ -771,7 +773,12 @@ cmd_init() {
     || warn "$CONFIG_NAME chưa được gitignore. Thêm .team-tools/ vào .gitignore, hoặc commit file này."
 
   step "Khởi tạo cấu hình build thành công"
-  next_step "fb-build -m \"ghi chú cho tester\" ${C_DIM}(build và upload; thêm --dry-run để chỉ kiểm tra)${C_0}"
+  next_step "build và upload, vd: ${C_B}fb-build -m \"Sửa lỗi đăng nhập\" -v 1.2.0 -b 42${C_0}"
+  echo "  -m TEXT      ghi chú cho tester trong release notes"
+  echo "  -v VERSION   version, mặc định theo project"
+  echo "  -b BUILD     build number, mặc định theo project"
+  echo "  --dry-run    chỉ kiểm tra, không build"
+  echo "  ${C_DIM}Các tùy chọn đều không bắt buộc.${C_0}"
 }
 
 # ---------------------------------------------------------------------------
