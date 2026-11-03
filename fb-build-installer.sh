@@ -10,6 +10,12 @@
 # from bin/fb-build.
 set -euo pipefail
 
+# Lark webhooks per Apple team, published next to this installer by the sync
+# workflow, encrypted with the team password (secret LARK_WEBHOOKS_PW).
+# fb-build reads the decrypted copy from LARK_TARGET after an upload.
+LARK_URL="${FB_BUILD_LARK_URL:-https://raw.githubusercontent.com/matechios/commands-archive/main/fb-build-lark-webhooks.json.enc}"
+LARK_TARGET="${FB_BUILD_LARK_WEBHOOKS:-$HOME/.config/fb-build/fb-build-lark-webhooks.json}"
+
 main() {
   BIN_DIR="${1:-$HOME/.local/bin}"
   TARGET="$BIN_DIR/fb-build"
@@ -42,6 +48,8 @@ main() {
   else
     ok "fb-build $VERSION"
   fi
+
+  install_lark_webhooks
 
   warnings=0
   case ":$PATH:" in
@@ -118,6 +126,64 @@ main() {
   fi
 }
 
+# Downloads the encrypted Lark webhooks and decrypts them into LARK_TARGET with
+# the team password: FB_BUILD_LARK_PW, else the one saved by an earlier run,
+# else asked on the terminal and saved. Keeps the old copy when anything fails:
+# builds still upload then, without a Lark message.
+install_lark_webhooks() {
+  local dir key enc out pw tries=0 teams
+  dir="$(dirname "$LARK_TARGET")"
+  key="$dir/lark-webhooks.key"
+  enc="$(mktemp -t fb-build-lark)"
+  out="$(mktemp -t fb-build-lark)"
+  if ! curl -fsSL --max-time 15 "$LARK_URL" -o "$enc" 2>/dev/null; then
+    rm -f "$enc" "$out"
+    lark_skipped "Không tải được Lark webhooks"
+    return 0
+  fi
+  pw="${FB_BUILD_LARK_PW:-}"
+  [[ -n "$pw" || ! -f "$key" ]] || pw="$(cat "$key")"
+  while ! decrypt_lark "$pw" "$enc" "$out"; do
+    [[ -z "$pw" ]] || warn "Mật khẩu Lark webhooks không đúng"
+    pw=
+    # Ask on the terminal: under curl | bash, stdin is the script.
+    if (( tries++ < 3 )) && { exec 3</dev/tty; } 2>/dev/null; then
+      read -rs -p "  ${C_YEL}?${C_0} Mật khẩu Lark webhooks (hỏi team lead): " pw <&3 || true
+      exec 3<&-
+      echo >&2
+    fi
+    if [[ -z "$pw" ]]; then
+      rm -f "$enc" "$out"
+      lark_skipped "Chưa có mật khẩu Lark webhooks. Chạy lại installer trong Terminal"
+      return 0
+    fi
+  done
+  rm -f "$enc"
+  mkdir -p "$dir"
+  (umask 077; printf '%s' "$pw" > "$key")
+  # mktemp made it 0600, so the webhooks stay readable by this user only.
+  mv -f "$out" "$LARK_TARGET"
+  teams="$(plutil -convert xml1 -o - "$LARK_TARGET" | grep -c '<key>webhook</key>' || true)"
+  ok "Lark webhooks: $teams team ${C_DIM}· ${LARK_TARGET/#$HOME/~}${C_0}"
+}
+
+# Same cipher as the sync workflow. The password goes through the environment,
+# not the command line, so ps does not show it.
+decrypt_lark() {
+  [[ -n "$1" ]] || return 1
+  LARK_PW="$1" /usr/bin/openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -a -A \
+    -pass env:LARK_PW -in "$2" -out "$3" 2>/dev/null \
+    && plutil -convert xml1 -o /dev/null "$3" 2>/dev/null
+}
+
+lark_skipped() {
+  if [[ -f "$LARK_TARGET" ]]; then
+    warn "$1. Giữ Lark webhooks cũ ở ${LARK_TARGET/#$HOME/~}"
+  else
+    warn "$1. Build vẫn chạy nhưng không gửi thông báo Lark"
+  fi
+}
+
 # The tool is a quoted heredoc inside a function and main runs on the last line,
 # so bash parses the whole file before doing anything. That is what makes
 # `curl … | bash` work: there is no file on disk to read the tool back from.
@@ -143,6 +209,10 @@ cat <<'__FB_BUILD_TOOL__'
 # output goes to ~/Library/Developer/fb-build/<owner>/<repo>/<timestamp>/.
 # The build itself runs in a git worktree of HEAD next to it (src/) with its
 # own DerivedData, so Xcode can keep working on the repo in the meantime.
+# After the upload, a Lark Base automation webhook is notified, picked by the
+# app's team ID from ~/.config/fb-build/fb-build-lark-webhooks.json
+# ({"<team id>": {"name": ..., "webhook": "https://..."}}), which the installer
+# downloads encrypted and decrypts with the team password.
 # Works with the bash 3.2 that ships with macOS.
 set -euo pipefail
 
@@ -153,6 +223,7 @@ OUT_ROOT="${FB_BUILD_HOME:-$HOME/Library/Developer/fb-build}"
 KEEP_RUNS=5
 FIREBASE="${FIREBASE_BIN:-firebase}"
 PLISTBUDDY=/usr/libexec/PlistBuddy
+LARK_WEBHOOKS="${FB_BUILD_LARK_WEBHOOKS:-$HOME/.config/fb-build/fb-build-lark-webhooks.json}"
 KNOWN_KEYS="scheme workspace project configuration firebase_plist export_options_plist xcode testers"
 # Xcode 16 keeps provisioning profiles in the first, older Xcodes in the second.
 PROFILE_DIRS=("$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" "$HOME/Library/MobileDevice/Provisioning Profiles")
@@ -1005,6 +1076,45 @@ stage_upload() {
   ok "Đã upload $SCHEME $APP_VERSION ($APP_BUILD) · $CONFIGURATION ${C_DIM}· $ELAPSED${C_0}"
 }
 
+# Posts {repo, title, message} to the Lark webhook of the app's team. A failure
+# only warns: the build is already uploaded.
+notify_lark() {
+  local team="$1" short="${LARK_WEBHOOKS/#$HOME/~}" url tmp response code
+  if [[ -z "$team" ]]; then
+    warn "Không đọc được team ID của app, bỏ qua thông báo Lark"
+    return 0
+  fi
+  if [[ ! -f "$LARK_WEBHOOKS" ]]; then
+    warn "Không có $short, bỏ qua thông báo Lark"
+    return 0
+  fi
+  url="$(plutil -extract "$team.webhook" raw -o - "$LARK_WEBHOOKS" 2>/dev/null || true)"
+  if [[ -z "$url" ]]; then
+    warn "Chưa có webhook Lark cho team $team trong $short, bỏ qua thông báo"
+    return 0
+  fi
+  tmp="$(mktemp -t fb-build-lark)"
+  plutil -create xml1 "$tmp"
+  plutil -insert repo -string "${REPO_KEY##*/}" "$tmp"
+  plutil -insert title -string "Build $APP_VERSION ($APP_BUILD) is now available on Firebase App Distribution" "$tmp"
+  plutil -insert message -string "$(cat "$NOTES")" "$tmp"
+  plutil -convert json "$tmp"
+  if ! response="$(curl -sS --fail-with-body --max-time 15 -H 'Content-Type: application/json' \
+    --data-binary @"$tmp" "$url" 2>&1)"; then
+    rm -f "$tmp"
+    warn "Không gửi được thông báo Lark: $(head -1 <<< "$response")"
+    return 0
+  fi
+  rm -f "$tmp"
+  # Lark answers HTTP 200 even on errors, with the reason in code/msg.
+  code="$(plutil -extract code raw -o - - <<< "$response" 2>/dev/null || echo 0)"
+  if [[ "$code" != 0 ]]; then
+    warn "Lark từ chối thông báo: $(plutil -extract msg raw -o - - <<< "$response" 2>/dev/null || echo "$response")"
+    return 0
+  fi
+  ok "Đã gửi thông báo Lark"
+}
+
 # ---------------------------------------------------------------------------
 # Build checkout
 # ---------------------------------------------------------------------------
@@ -1122,6 +1232,7 @@ cmd_run() {
   write_release_notes "$NOTES"
   step "Upload Firebase App Distribution"
   stage_upload
+  notify_lark "$(plist_get ApplicationProperties:Team "$ARCHIVE_PATH/Info.plist" || echo "${SIGN_TEAM:-}")"
   show_release_notes "$NOTES"
 }
 
