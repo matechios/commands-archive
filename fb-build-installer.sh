@@ -51,7 +51,10 @@ main() {
 
   install_lark_webhooks
 
-  warnings=0
+  # What the dev still has to do, in order, as "command<TAB>note". The note
+  # marks the steps done once.
+  todo=()
+  once="chỉ làm 1 lần"
   case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
     *)
@@ -63,26 +66,23 @@ main() {
         bash) rc="$HOME/.bash_profile" ;;
         *)    rc= ;;
       esac
-      if [[ -z "$rc" ]]; then
-        warn "${BIN_DIR/#$HOME/~} chưa có trong PATH. Thêm dòng này vào file cấu hình shell rồi mở lại Terminal:"
-        fix "export PATH=\"$path_dir:\$PATH\""
-        warnings=$((warnings + 1))
-      elif grep -qsF -e "$BIN_DIR" -e "$path_dir" "$rc"; then
-        ok "${rc/#$HOME/~} đã có ${BIN_DIR/#$HOME/~} trong PATH ${C_DIM}· mở Terminal mới hoặc chạy: exec ${SHELL##*/}${C_0}"
-      elif printf '\n# fb-build\nexport PATH="%s:$PATH"\n' "$path_dir" >> "$rc"; then
-        ok "Đã thêm ${BIN_DIR/#$HOME/~} vào PATH trong ${rc/#$HOME/~} ${C_DIM}· mở Terminal mới hoặc chạy: exec ${SHELL##*/}${C_0}"
+      if [[ -n "$rc" ]] && grep -qsF -e "$BIN_DIR" -e "$path_dir" "$rc"; then
+        ok "PATH: ${rc/#$HOME/~} đã có ${BIN_DIR/#$HOME/~}"
+        todo+=("Mở Terminal mới (hoặc chạy: exec ${SHELL##*/})"$'\t'"$once")
+      elif [[ -n "$rc" ]] && printf '\n# fb-build\nexport PATH="%s:$PATH"\n' "$path_dir" >> "$rc"; then
+        ok "PATH: đã thêm ${BIN_DIR/#$HOME/~} vào ${rc/#$HOME/~}"
+        todo+=("Mở Terminal mới (hoặc chạy: exec ${SHELL##*/})"$'\t'"$once")
       else
-        warn "Không ghi được ${rc/#$HOME/~}. Thêm dòng này vào đó rồi mở lại Terminal:"
-        fix "export PATH=\"$path_dir:\$PATH\""
-        warnings=$((warnings + 1))
+        warn "${BIN_DIR/#$HOME/~} chưa có trong PATH"
+        todo+=("Thêm vào file cấu hình shell: export PATH=\"$path_dir:\$PATH\", rồi mở Terminal mới"$'\t'"$once")
       fi
       ;;
   esac
 
   xcodes="$("$TARGET" xcodes 2>/dev/null | sed -n 's/^  [* ] \([^ ]*\) .*/\1/p' | paste -sd, - | sed 's/,/, /g')"
   if [[ -z "$xcodes" ]]; then
-    bad "Chưa cài Xcode. Cài Xcode từ App Store rồi chạy lại file cài đặt."
-    warnings=$((warnings + 1))
+    bad "Chưa cài Xcode"
+    todo=("Cài Xcode từ App Store rồi chạy lại lệnh cài đặt này"$'\t'"$once" ${todo[@]+"${todo[@]}"})
   elif [[ "$xcodes" == *", "* ]]; then
     ok "Xcode $xcodes ${C_DIM}· chọn bản để build bằng fb-build init --xcode <version>${C_0}"
   else
@@ -107,27 +107,38 @@ main() {
       fi
     fi
   fi
+  login="firebase login"$'\t'"$once, đăng nhập tài khoản Google có quyền App Distribution"
   if command -v firebase >/dev/null 2>&1; then
     account="$(firebase login:list --json 2>/dev/null | plutil -extract result.0.user.email raw -o - - 2>/dev/null || true)"
     if [[ -n "$account" ]]; then
       ok "Firebase CLI $(firebase --version 2>/dev/null) · $account"
     else
-      warn "Firebase CLI chưa đăng nhập. Chạy:"
-      fix "firebase login"
-      warnings=$((warnings + 1))
+      warn "Firebase CLI chưa đăng nhập"
+      todo+=("$login")
     fi
   else
-    bad "Chưa có Firebase CLI. Cài bằng:"
-    fix "brew install firebase-cli"
-    warnings=$((warnings + 1))
+    bad "Chưa có Firebase CLI"
+    if command -v brew >/dev/null 2>&1; then
+      todo+=("brew install firebase-cli"$'\t'"$once")
+    else
+      todo+=("curl -sL https://firebase.tools | bash"$'\t'"$once, cài Firebase CLI")
+    fi
+    todo+=("$login")
   fi
+  todo+=("Trong thư mục repo app: fb-build init"$'\t'"chỉ làm 1 lần cho mỗi repo")
 
   echo
-  if (( warnings == 0 )); then
-    echo "${C_GRN}${C_B}Cài đặt xong.${C_0} Trong thư mục repo app, chạy ${C_B}fb-build init${C_0} để bắt đầu."
+  if (( ${#todo[@]} == 1 )); then
+    echo "${C_GRN}${C_B}Cài đặt xong.${C_0}"
   else
-    echo "${C_YEL}${C_B}Đã cài fb-build.${C_0} Xử lý $warnings mục ở trên rồi chạy ${C_B}fb-build init${C_0} trong repo app."
+    echo "${C_YEL}${C_B}Đã cài fb-build.${C_0}"
   fi
+  echo "${C_B}Tiếp theo:${C_0}"
+  n=0
+  for item in "${todo[@]}"; do
+    n=$((n + 1))
+    echo "  $n. ${C_B}${item%%$'\t'*}${C_0} ${C_DIM}(${item#*$'\t'})${C_0}"
+  done
 }
 
 # Downloads the encrypted Lark webhooks and decrypts them into LARK_TARGET with
@@ -245,6 +256,7 @@ warn() { echo "  ${C_YEL}!${C_0} $*"; }
 bad()  { echo "  ${C_RED}✗${C_0} $*"; PROBLEMS=$((PROBLEMS + 1)); }
 hint() { echo "${C_YEL}→ $*${C_0}" >&2; }
 step() { echo; echo "${C_B}== $*${C_0}"; }
+next_step() { echo; echo "${C_B}Tiếp theo:${C_0} $*"; }
 
 usage() {
   cat <<'EOF'
@@ -736,6 +748,7 @@ cmd_init() {
     || warn "$CONFIG_NAME chưa được gitignore. Thêm .team-tools/ vào .gitignore, hoặc commit file này."
 
   step "Khởi tạo cấu hình build thành công"
+  next_step "fb-build -m \"ghi chú cho tester\" ${C_DIM}(build và upload; thêm --dry-run để chỉ kiểm tra)${C_0}"
 }
 
 # ---------------------------------------------------------------------------
@@ -1199,7 +1212,9 @@ cmd_run() {
   preflight
   if (( PROBLEMS > 0 )); then
     echo
-    fail "Có $PROBLEMS lỗi cần xử lý trước khi build."
+    echo "${C_RED}✗ Có $PROBLEMS lỗi cần xử lý trước khi build.${C_0}" >&2
+    next_step "sửa các mục ✗ ở trên rồi chạy lại lệnh này"
+    exit 1
   fi
 
   if [[ "$DRY_RUN" == true ]]; then
@@ -1213,6 +1228,7 @@ cmd_run() {
     rm -f "$preview"
     echo
     echo "Dry run: dừng trước khi build."
+    next_step "chạy lại lệnh này không có --dry-run để build và upload"
     return
   fi
 
