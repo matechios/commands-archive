@@ -67,7 +67,6 @@ main() {
   mkdir -p "$SCRIPTS_TARGET" 2>/dev/null || die "Không tạo được thư mục .team-tools/weekly-report/"
   cp "$TOOLS_DIR/scripts/report.py" "$SCRIPTS_TARGET/report.py" \
     || die "Không ghi được .team-tools/weekly-report/report.py"
-  rm -f "$TEAM_TOOLS_DIR/report.py"
   if [[ -n "$previous" && "$previous" != "$TOOL_VERSION" ]]; then
     ok "Report tool: cập nhật $previous → $TOOL_VERSION ${C_DIM}· .team-tools/weekly-report/${C_0}"
   else
@@ -75,10 +74,19 @@ main() {
   fi
 
   env_file="$SCRIPTS_TARGET/.env"
+  legacy_env="$TEAM_TOOLS_DIR/.env"
+  legacy_env_owned=false
+  if [[ -f "$legacy_env" && ! -L "$legacy_env" ]] &&
+     grep -Eq '^#.*(ios-weekly-report|git-team-tools) config' "$legacy_env"; then
+    legacy_env_owned=true
+  elif [[ -e "$legacy_env" || -L "$legacy_env" ]]; then
+    warn "Giữ .team-tools/.env vì không xác định được là cấu hình của weekly-report."
+    fix "Kiểm tra cấu hình .team-tools/weekly-report/.env trước khi gửi báo cáo."
+  fi
   if [[ -f "$env_file" ]]; then
     ok "Cấu hình .team-tools/weekly-report/.env ${C_DIM}· giữ nguyên${C_0}"
-  elif [[ -f "$TEAM_TOOLS_DIR/.env" ]] && grep -q "ios-weekly-report config" "$TEAM_TOOLS_DIR/.env"; then
-    mv "$TEAM_TOOLS_DIR/.env" "$env_file" || die "Không chuyển được .team-tools/.env"
+  elif [[ "$legacy_env_owned" == true ]]; then
+    cp -p "$legacy_env" "$env_file" || die "Không chuyển được .team-tools/.env"
     ok "Cấu hình .team-tools/weekly-report/.env ${C_DIM}· chuyển từ .team-tools/.env${C_0}"
   else
     cat > "$env_file" << 'EOF' || die "Không ghi được .team-tools/weekly-report/.env"
@@ -124,6 +132,46 @@ EOF
     printf '\n# ios-weekly-report\n.team-tools/\n' >> "$REPO_DIR/.gitignore"
     ok "Đã thêm .team-tools/ vào .gitignore"
   fi
+
+  # Chỉ dọn bản cũ sau khi tool, cấu hình và skill đã được cài thành công.
+  if [[ "$legacy_env_owned" == true ]]; then
+    if cmp -s "$legacy_env" "$env_file"; then
+      rm -f "$legacy_env" || die "Không xóa được cấu hình cũ .team-tools/.env"
+      ok "Đã dọn .team-tools/.env ${C_DIM}· cấu hình đã có ở vị trí mới${C_0}"
+    else
+      mkdir -p "$SCRIPTS_TARGET/backups"
+      env_backup="$(mktemp "$SCRIPTS_TARGET/backups/legacy.env.XXXXXX")"
+      mv "$legacy_env" "$env_backup" || die "Không sao lưu được cấu hình cũ .team-tools/.env"
+      ok "Đã sao lưu cấu hình cũ ${C_DIM}· ${env_backup#"$REPO_DIR"/}${C_0}"
+      fix "Cấu hình đang dùng được giữ nguyên; kiểm tra bản sao lưu nếu cần lấy lại giá trị cũ."
+    fi
+  fi
+
+  for legacy_name in report.py suggest_commit.py; do
+    legacy_script="$TEAM_TOOLS_DIR/$legacy_name"
+    case "$legacy_name" in
+      report.py) signature="report.py — Tổng hợp commit cá nhân trong tuần → Google Sheets" ;;
+      suggest_commit.py) signature="suggest_commit.py — Gợi ý commit message từ git diff dùng Claude AI" ;;
+    esac
+    if [[ -e "$legacy_script" || -L "$legacy_script" ]]; then
+      if [[ -f "$legacy_script" && ! -L "$legacy_script" ]] && grep -qF "$signature" "$legacy_script"; then
+        rm -f "$legacy_script" || die "Không xóa được script cũ $legacy_name"
+        ok "Đã dọn script cũ ${C_DIM}· .team-tools/$legacy_name${C_0}"
+      else
+        warn "Giữ .team-tools/$legacy_name vì không xác định được là file của weekly-report."
+        continue
+      fi
+    fi
+    # Bản installer trước có thể đã xóa script nhưng vẫn để lại cache.
+    cache_dir="$TEAM_TOOLS_DIR/__pycache__"
+    if [[ -d "$cache_dir" && ! -L "$cache_dir" ]]; then
+      for cache in "$cache_dir/${legacy_name%.py}."*.pyc; do
+        [[ -f "$cache" && ! -L "$cache" ]] || continue
+        rm -f "$cache" || die "Không xóa được cache cũ của $legacy_name"
+      done
+      rmdir "$cache_dir" 2>/dev/null || true
+    fi
+  done
 
   warnings=0
   if ! command -v python3 >/dev/null 2>&1; then
