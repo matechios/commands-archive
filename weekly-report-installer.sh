@@ -7,7 +7,7 @@
 # Khi không có bộ tool cạnh file này, installer tự clone từ TOOLS_REPO_URL.
 set -euo pipefail
 
-TOOL_VERSION="1.3"
+TOOL_VERSION="1.4"
 TOOLS_REPO_URL="${TOOLS_REPO_URL:-https://github.com/matechios/ios-weekly-report.git}"
 
 main() {
