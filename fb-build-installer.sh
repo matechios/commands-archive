@@ -257,7 +257,7 @@ cat <<'__FB_BUILD_TOOL__'
 set -euo pipefail
 
 # Bump TOOL_VERSION for every release.
-TOOL_VERSION=1.0
+TOOL_VERSION=1.0.1
 CONFIG_NAME=.team-tools/fb-build.json
 OUT_ROOT="${FB_BUILD_HOME:-$HOME/Library/Developer/fb-build}"
 KEEP_RUNS=5
