@@ -8,7 +8,7 @@
 set -euo pipefail
 
 TOOL_VERSION="1.5"
-TOOLS_REPO_URL="${TOOLS_REPO_URL:-https://github.com/matechios/ios-weekly-report.git}"
+TOOLS_REPO_URL="${TOOLS_REPO_URL:-git@github.com:matechios/ios-weekly-report.git}"
 
 main() {
   if [[ -t 1 ]]; then
