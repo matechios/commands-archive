@@ -450,7 +450,7 @@ check_xcode() {
     ok "$XCODE_VERSION ($(default_developer_dir | sed 's|/Contents/Developer$||'))"
     return 0
   fi
-  bad "xcodebuild không chạy được (Xcode mặc định: $(default_developer_dir)). Cài Xcode, hoặc chọn bản khác bằng: fb-build init --xcode <version> (xem: fb-build xcodes)"
+  bad "xcodebuild không chạy được. Chọn Xcode khác: fb-build init --xcode <version>"
   return 1
 }
 
@@ -473,7 +473,7 @@ detect_container() {
     elif [[ -z "$workspaces" && -n "$projects" && $(wc -l <<< "$projects") -eq 1 ]]; then
       PROJECT="$projects"
     else
-      bad "Không tự chọn được workspace/project (tìm thấy: $(echo $workspaces $projects)). Khai báo \"workspace\" hoặc \"project\" trong $CONFIG_NAME"
+      bad "Không tự chọn được workspace/project, khai báo \"workspace\" hoặc \"project\" trong $CONFIG_NAME"
       return 1
     fi
   fi
@@ -609,10 +609,6 @@ pick_profile() {
     END { if (!found && wild != "") print wild }' <<< "$PROFILES"
 }
 
-profile_hint() {
-  echo "Tạo profile Ad Hoc cho $1 tại developer.apple.com → Profiles (gồm certificate Apple Distribution có trong keychain máy này), tải về rồi mở file .mobileprovision để cài"
-}
-
 check_signing() {
   if [[ -n "$CFG_EXPORT_OPTIONS" ]]; then
     if [[ -f "$CFG_EXPORT_OPTIONS" ]]; then
@@ -624,7 +620,7 @@ check_signing() {
   fi
   PROFILES="$(list_release_profiles)"
   if [[ -z "$PROFILES" ]]; then
-    bad "Không có provisioning profile release testing (ad hoc) nào còn hạn kèm certificate Apple Distribution trong keychain. $(profile_hint "app")"
+    bad "Không có profile Ad Hoc hợp lệ."
     return
   fi
   # The app's own bundle ids are known only after the archive; the Firebase
@@ -633,7 +629,7 @@ check_signing() {
   local line
   line="$(pick_profile "$PLIST_BUNDLE_ID" "" "")"
   if [[ -z "$line" ]]; then
-    bad "Không có profile release testing cho $PLIST_BUNDLE_ID (BUNDLE_ID trong $SRC_PLIST). $(profile_hint "$PLIST_BUNDLE_ID")"
+    bad "Không có profile Ad Hoc."
   else
     ok "Profile: $(cut -f5 <<< "$line") ($(cut -f1 <<< "$line"))"
   fi
@@ -659,9 +655,9 @@ select_signing() {
     [[ -n "$(pick_profile "$b" "$team" "")" ]] || missing="${missing:+$missing, }$b"
   done <<< "$bundles"
   if [[ -n "$missing" ]]; then
-    hint "Không có profile release testing${team:+ của team $team} cho: $missing. $(profile_hint "$missing")"
+    hint "Không có profile Ad Hoc${team:+ của team $team}."
   else
-    hint "Các profile release testing của $(paste -sd, - <<< "$bundles" | sed 's/,/, /g') không dùng chung một certificate Apple Distribution có trong keychain. Tạo lại profile với cùng certificate."
+    hint "Các profile Ad Hoc không dùng chung certificate."
   fi
   fail "Không chọn được provisioning profile để export"
 }
@@ -726,7 +722,7 @@ cmd_init() {
   project_id="$(plist_get PROJECT_ID "$plist" || true)"
   ok "Firebase plist: $plist"
   if ! git ls-files --error-unmatch -- "$plist" >/dev/null 2>&1; then
-    warn "$plist không có trong git. Các dev khác cần đặt file này đúng đường dẫn trên máy họ."
+    warn "$plist không có trong git"
   fi
   # Builds go to every tester group, and to the project's testers saved in
   # the config. Not being able to read them does not stop init: the build
@@ -870,7 +866,7 @@ preflight() {
   # Firebase CLI, login and tester groups
   TESTER_GROUPS= TESTERS=
   if ! command -v "$FIREBASE" >/dev/null 2>&1; then
-    bad "Chưa cài Firebase CLI. Cài bằng: brew install firebase-cli (hoặc npm install -g firebase-tools), rồi chạy: firebase login"
+    bad "Chưa cài Firebase CLI: brew install firebase-cli"
   elif [[ -n "$SRC_PLIST" ]]; then
     check_firebase_access
   fi
@@ -886,7 +882,7 @@ check_firebase_access() {
     if [[ -z "$account" ]] || grep -qiE "authenticat|login|credentials" <<< "$FB_ERROR"; then
       bad "Firebase CLI chưa đăng nhập hoặc phiên đã hết hạn. Chạy: firebase login --reauth"
     elif grep -qiE "403|permission|denied" <<< "$FB_ERROR"; then
-      bad "Tài khoản $account không có quyền App Distribution trên project $PROJECT_ID. Nhờ owner cấp role \"Firebase App Distribution Admin\" (hoặc Editor)."
+      bad "$account không có quyền App Distribution trên $PROJECT_ID"
     else
       bad "Không truy cập được App Distribution của project $PROJECT_ID ($account): $FB_ERROR"
     fi
@@ -945,19 +941,19 @@ show_release_notes() {
 explain_xcode_failure() {
   local log="$1"
   if grep -qE "No Accounts|No account for team|Your session has expired|sign in again|account .* not found" "$log"; then
-    hint "Apple account trong Xcode chưa đăng nhập hoặc đã hết phiên. Mở Xcode → Settings → Accounts để đăng nhập lại."
+    hint "Đăng nhập lại Apple account trong Xcode → Settings → Accounts"
   elif grep -qE "has no devices|no devices from which to generate" "$log"; then
-    hint "Team chưa đăng ký thiết bị nào nên không tạo được ad hoc profile. Đăng ký UDID của tester tại developer.apple.com → Devices."
+    hint "Team chưa đăng ký thiết bị nào"
   elif grep -qE 'No signing certificate "(iOS|Apple) Distribution"|Missing private key|doesn.t include signing certificate' "$log"; then
-    hint "Máy này thiếu certificate Apple Distribution (kèm private key) để ký bản release-testing. Mở Xcode → Settings → Accounts → Manage Certificates."
+    hint "Thiếu certificate Apple Distribution trong keychain"
   elif grep -qE "errSecInternalComponent|User interaction is not allowed|unable to unlock keychain" "$log"; then
-    hint "Login keychain đang khóa (hay gặp khi chạy qua SSH). Chạy trong Terminal của phiên đăng nhập, hoặc: security unlock-keychain ~/Library/Keychains/login.keychain-db"
+    hint "Keychain đang khóa: security unlock-keychain"
   elif grep -qE "sandbox is not in sync with the Podfile.lock" "$log"; then
     hint "Pods chưa đồng bộ với Podfile.lock. Chạy pod install trong repo."
   elif grep -qE "does not contain a scheme named|is not currently configured for the" "$log"; then
     hint "Scheme hoặc configuration không tồn tại. Kiểm tra \"scheme\" và \"configuration\" trong $CONFIG_NAME."
   elif grep -qE "No profiles? for|couldn.t find any provisioning profiles|requires a provisioning profile|doesn.t match the entitlements|conflicting provisioning settings|doesn.t include the currently selected device" "$log"; then
-    hint "Lỗi provisioning profile. Thử Distribute App → Custom → Release Testing (ký thủ công) trong Xcode Organizer với cùng archive để xem chi tiết. Cần cài profile Ad Hoc cho app và từng extension, cùng certificate Apple Distribution. Hoặc khai báo \"export_options_plist\" trong $CONFIG_NAME."
+    hint "Lỗi provisioning profile. Cần profile Ad Hoc cho app và từng extension."
   fi
   hint "Log đầy đủ: $log"
 }
@@ -1034,11 +1030,11 @@ stage_archive() {
   # The override only reaches Info.plist values written as $(MARKETING_VERSION)
   # and $(CURRENT_PROJECT_VERSION), not hard-coded ones.
   if [[ -n "$OPT_APP_VERSION" && "$APP_VERSION" != "$OPT_APP_VERSION" ]]; then
-    hint "Info.plist của app cần ghi CFBundleShortVersionString là \$(MARKETING_VERSION) thì --app-version mới có tác dụng."
+    hint "--app-version không có tác dụng: Info.plist không dùng \$(MARKETING_VERSION)"
     fail "Archive có version $APP_VERSION, không phải $OPT_APP_VERSION"
   fi
   if [[ -n "$OPT_BUILD_NUMBER" && "$APP_BUILD" != "$OPT_BUILD_NUMBER" ]]; then
-    hint "Info.plist của app cần ghi CFBundleVersion là \$(CURRENT_PROJECT_VERSION) thì --build-number mới có tác dụng."
+    hint "--build-number không có tác dụng: Info.plist không dùng \$(CURRENT_PROJECT_VERSION)"
     fail "Archive có build number $APP_BUILD, không phải $OPT_BUILD_NUMBER"
   fi
   ok "Archive: $APP_VERSION ($APP_BUILD) ${C_DIM}· $ELAPSED${C_0}"
@@ -1115,7 +1111,7 @@ stage_upload() {
     elif grep -qiE "403|permission|denied" "$log"; then
       hint "Tài khoản Firebase không có quyền App Distribution trên project $PROJECT_ID."
     elif grep -qiE "404|not found" "$log"; then
-      hint "Không tìm thấy app $APP_ID, hoặc project $PROJECT_ID chưa bật App Distribution (Firebase console → App Distribution → Get started)."
+      hint "Không tìm thấy app $APP_ID hoặc project chưa bật App Distribution"
     fi
     hint "File .ipa vẫn ở $IPA"
     fail "Upload lỗi (exit $status). Log: $log"
@@ -1178,7 +1174,7 @@ lock_build() {
   if ! mkdir "$lock" 2>/dev/null; then
     pid="$(cat "$lock/pid" 2>/dev/null || true)"
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-      fail "Repo này đang được build bởi một lần chạy khác (pid $pid). Đợi lần đó xong rồi chạy lại."
+      fail "Đang có lần build khác (pid $pid)"
     fi
     rm -rf "$lock"
     mkdir "$lock" || fail "Không tạo được $lock"
