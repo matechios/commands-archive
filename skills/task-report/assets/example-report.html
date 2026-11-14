@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Tìm địa chỉ giao hàng — Báo cáo mẫu</title>
+  <style>
+    /* CHỈNH STYLE TẠI ĐÂY: màu thương hiệu, font, cỡ chữ, độ rộng, khoảng cách. */
+    :root {
+      --brand: #2457a6;
+      --brand-soft: #eef3fb;
+      --ink: #15233a;
+      --muted: #5a6b7f;
+      --canvas: #eef2f6;
+      --paper: #ffffff;
+      --line: #e1e8ef;
+      --line-strong: #cad6e2;
+      --head-bg: #f5f7fa;
+      --zebra: #fafbfc;
+      --ok: #17724a;   --ok-bg: #e4f4ec;
+      --warn: #8a5a00; --warn-bg: #fff2d4;
+      --no: #b3261e;   --no-bg: #fdeceb;
+      --unk: #475a71;  --unk-bg: #eaeef3;
+      --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --font-size: 15px;
+      --line-height: 1.6;
+      --page-width: 880px;
+      --page-padding: 48px;
+      --section-gap: 28px;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      padding: 40px 16px;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: var(--font-body);
+      font-size: var(--font-size);
+      line-height: var(--line-height);
+      -webkit-font-smoothing: antialiased;
+    }
+    .report-page {
+      max-width: var(--page-width);
+      margin: 0 auto;
+      padding: var(--page-padding);
+      background: var(--paper);
+      border-top: 4px solid var(--brand);
+      border-radius: 0 0 var(--radius) var(--radius);
+      box-shadow: 0 1px 2px rgb(21 35 58 / 6%), 0 10px 32px rgb(21 35 58 / 7%);
+      overflow-wrap: break-word;
+    }
+
+    /* Header */
+    .report-header { margin-bottom: 24px; }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--brand);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: 28px; line-height: 1.3; letter-spacing: -.02em; text-wrap: balance; }
+    .subtitle { margin: 8px 0 0; color: var(--muted); font-size: 15px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; }
+    .meta div { display: flex; gap: 6px; }
+    .meta dt { color: var(--muted); }
+    .meta dd { margin: 0; font-weight: 600; }
+
+    /* Tóm tắt */
+    .summary { padding: 18px 22px; background: var(--brand-soft); border-radius: var(--radius); }
+    .summary-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 8px; }
+    .summary-label { margin: 0; color: var(--brand); font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .summary ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.55; }
+    .summary li + li { margin-top: 4px; }
+
+    /* Badge & tag trạng thái: luôn kèm chữ, không chỉ dựa vào màu.
+       Mặc định trung tính; .ok = đạt / đã chạy thử, .warn = một phần / đang làm / chưa xác minh phần quan trọng, .no = không đạt / bị chặn. */
+    .badge, .tag {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.6;
+      white-space: nowrap;
+      vertical-align: 1px;
+      color: var(--unk);
+      background: var(--unk-bg);
+    }
+    .ok   { color: var(--ok);   background: var(--ok-bg); }
+    .warn { color: var(--warn); background: var(--warn-bg); }
+    .no   { color: var(--no);   background: var(--no-bg); }
+    .unk  { color: var(--unk);  background: var(--unk-bg); }
+    td > .tag:first-child { margin-right: 4px; }
+
+    /* Mục */
+    .report-section { padding-top: var(--section-gap); }
+    .section-heading { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 18px; line-height: 1.35; font-weight: 700; letter-spacing: -.01em; }
+    .section-number { flex: none; min-width: 28px; padding: 2px 6px; border-radius: 6px; background: var(--brand); color: #fff; font: 600 12px/1.5 var(--font-mono); text-align: center; }
+    .sub-heading { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 15px; line-height: 1.4; font-weight: 700; }
+    .sub-heading .section-number { min-width: 0; background: var(--brand-soft); color: var(--brand); }
+    .subsection + .subsection { margin-top: 22px; }
+    .section-body > :first-child { margin-top: 0; }
+    .section-body > :last-child { margin-bottom: 0; }
+    p { margin: 0 0 10px; }
+    ul, ol { padding-left: 19px; margin: 0; }
+    li + li { margin-top: 6px; }
+    li::marker { color: var(--brand); }
+    strong { font-weight: 650; }
+    a { color: var(--brand); text-underline-offset: 2px; }
+    a:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+    code { padding: 1px 5px; border-radius: 4px; background: var(--head-bg); border: 1px solid var(--line); font-family: var(--font-mono); font-size: .85em; }
+
+    /* Bảng: cột đầu là tên hàng; trên màn hẹp bảng cuộn ngang, cột đầu đứng yên. */
+    .table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--line-strong); border-radius: var(--radius); }
+    .table-wrap + .table-wrap { margin-top: 14px; } /* ma trận rộng tách hai bảng, ví dụ tính năng / chi phí */
+    table { width: 100%; background: var(--paper); border-collapse: separate; border-spacing: 0; font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+    caption { padding: 9px 12px; text-align: left; color: var(--muted); font-size: 13px; background: var(--head-bg); border-bottom: 1px solid var(--line); }
+    th, td { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    thead th { background: var(--head-bg); color: var(--muted); font-size: 13px; font-weight: 650; border-bottom-color: var(--line-strong); }
+    tbody th { width: 24%; font-weight: 600; background: var(--paper); }
+    tbody tr:nth-child(even) > * { background: var(--zebra); }
+    tbody tr:last-child > * { border-bottom: 0; }
+    /* Cột phương án đề xuất: thêm class="pick" vào th và mọi td của cột đó. */
+    th.pick, td.pick, tbody tr:nth-child(even) > .pick { background: var(--brand-soft); }
+    thead th.pick { color: var(--brand); box-shadow: inset 0 3px 0 var(--brand); }
+    .table-note { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+
+    /* Kết luận & việc cần chốt */
+    .recommendation, .decisions li { font-size: 14px; line-height: 1.55; }
+    .recommendation { margin: 14px 0 0; padding: 14px 18px; background: var(--brand-soft); border-left: 3px solid var(--brand); border-radius: 0 var(--radius) var(--radius) 0; }
+    .decisions { list-style: none; margin: 0; padding: 0; }
+    .decisions li { padding: 12px 16px; background: var(--warn-bg); border-left: 3px solid var(--warn); border-radius: 0 var(--radius) var(--radius) 0; }
+    .decisions li + li { margin-top: 8px; }
+    .decisions .owner { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }
+
+    /* Footer & nguồn */
+    .report-footer { margin-top: var(--section-gap); padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .report-footer p { margin: 0; }
+    .sources { margin-top: 6px; padding-left: 17px; }
+    .sources li + li { margin-top: 3px; }
+
+    @media (max-width: 640px) {
+      body { padding: 0; background: var(--paper); }
+      .report-page { padding: 24px 16px 32px; border-radius: 0; box-shadow: none; }
+      h1 { font-size: 23px; }
+      .subtitle { font-size: 14px; }
+      .summary { padding: 14px 16px; }
+      .summary ul, .recommendation, .decisions li { font-size: 13.5px; }
+      .section-heading { font-size: 17px; }
+      table { min-width: 560px; font-size: 13.5px; }
+      th, td { padding: 8px 10px; }
+      tbody th { position: sticky; left: 0; z-index: 1; width: 128px; min-width: 128px; box-shadow: 1px 0 0 var(--line-strong); }
+    }
+
+    @page { size: A4; margin: 15mm 16mm; }
+    @media print {
+      /* Chữ nội dung và bảng ≥ 10pt; nhãn phụ (tag, badge, meta, nguồn) ≥ 9pt. */
+      :root { --font-size: 10.5pt; --section-gap: 16px; }
+      body { padding: 0; background: #fff; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .report-page { max-width: none; padding: 12px 0 0; border-top-width: 3px; border-radius: 0; box-shadow: none; }
+      .page-break { break-before: page; } /* chỉ dùng khi người in thấy bảng/mục bị cắt xấu */
+      h1 { font-size: 20pt; }
+      .eyebrow, .summary-label { font-size: 9pt; }
+      .subtitle { font-size: 10.5pt; }
+      .meta { font-size: 9.5pt; }
+      .badge, .tag { font-size: 9pt; }
+      .summary { padding: 12px 16px; break-inside: avoid; }
+      .summary ul, .recommendation, .decisions li { font-size: 10pt; }
+      .section-heading { font-size: 13pt; margin-bottom: 10px; break-after: avoid; }
+      .section-number { font-size: 9pt; }
+      .sub-heading { font-size: 11pt; margin-bottom: 8px; break-after: avoid; }
+      .subsection + .subsection { margin-top: 14px; }
+      .section-body li, .recommendation, .decisions li, tr { break-inside: avoid; }
+      p, li { orphans: 3; widows: 3; }
+      .table-wrap { overflow: visible; }
+      table { min-width: 0; font-size: 10pt; }
+      thead { display: table-header-group; }
+      thead th, caption, .table-note, .decisions .owner { font-size: 9.5pt; }
+      th, td { padding: 6px 9px; }
+      .report-footer { font-size: 9pt; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- BÁO CÁO MẪU: tình huống, tên dịch vụ, giá và số liệu đều là giả định để minh họa độ dài, giọng văn, cách so sánh và cách dùng class. Không chép nội dung.
+       Dịch vụ trong mẫu là giả định nên nguồn chỉ ghi tên tài liệu và mốc; báo cáo thật phải dùng link công khai thật. -->
+  <main>
+    <article class="report-page" aria-labelledby="report-title">
+      <header class="report-header">
+        <p class="eyebrow">Tìm địa chỉ giao hàng</p>
+        <h1 id="report-title">Chọn API địa chỉ thay thế trước khi gói miễn phí hiện tại ngừng 31/12/2026</h1>
+        <p class="subtitle">iOS/Android 5.3 · <code>address-api</code> · staging</p>
+        <dl class="meta">
+          <div><dt>Ngày</dt><dd>12/11/2026</dd></div>
+          <div><dt>Báo cáo bởi</dt><dd>Trần Thị B</dd></div>
+        </dl>
+      </header>
+
+      <section class="summary" aria-labelledby="summary-title">
+        <div class="summary-heading">
+          <h2 class="summary-label" id="summary-title">Tóm tắt</h2>
+          <span class="badge ok">Đã chạy thử 500 địa chỉ</span>
+        </div>
+        <ul>
+          <li>Ô tìm địa chỉ khi tạo đơn đang dùng gói miễn phí sẽ ngừng 31/12/2026; tháng 10 có 12% đơn tài xế phải gọi khách xác nhận lại địa chỉ.</li>
+          <li>Đề xuất dùng API A: tìm đúng 94% địa chỉ so với 88% của API B, có SDK cho cả iOS và Android; chi phí dự kiến cao hơn khoảng 410 USD/tháng, cần PO chốt.</li>
+        </ul>
+      </section>
+
+      <section class="report-section" aria-labelledby="findings-title">
+        <h2 class="section-heading" id="findings-title"><span class="section-number" aria-hidden="true">01</span>Hiện trạng &amp; vấn đề</h2>
+        <div class="section-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Chức năng / luồng</th><th scope="col">Hiện trạng</th><th scope="col">Ảnh hưởng</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">Gợi ý địa chỉ khi tạo đơn</th><td>App gọi <code>address-api</code>, service này gọi gói miễn phí của nhà cung cấp hiện tại; nhà cung cấp đã thông báo ngừng gói từ 31/12/2026.</td><td>Sau mốc này ô tìm địa chỉ trả lỗi; khách phải tự gõ toàn bộ địa chỉ.</td></tr>
+                <tr><th scope="row">Độ chính xác địa chỉ</th><td>Kết quả thiếu số nhà ở nhiều hẻm/ngõ; log tháng 10 có 12% đơn tài xế bấm “Gọi xác nhận địa chỉ”.</td><td>Giao chậm và tăng cuộc gọi; chưa ước tính chi phí giao lại.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="report-section" aria-labelledby="solution-title">
+        <h2 class="section-heading" id="solution-title"><span class="section-number" aria-hidden="true">02</span>Phương án &amp; kế hoạch triển khai</h2>
+        <div class="section-body">
+          <section class="subsection" aria-labelledby="compare-title">
+            <h3 class="sub-heading" id="compare-title"><span class="section-number" aria-hidden="true">2.1</span>So sánh API A và API B</h3>
+            <div class="table-wrap">
+              <table>
+                <caption>Tính năng và chất lượng. Độ chính xác đo trên cùng 500 địa chỉ đơn hàng tháng 10, gọi từ staging.</caption>
+                <thead><tr><th scope="col">Tiêu chí</th><th scope="col" class="pick">API A</th><th scope="col">API B</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row">Gợi ý khi gõ (autocomplete)</th><td class="pick"><span class="tag ok">Đáp ứng</span>Có số nhà, hẻm/ngõ.</td><td><span class="tag warn">Một phần</span>Chỉ đến tên đường; số nhà phải gõ tay.</td></tr>
+                  <tr><th scope="row">Địa chỉ → tọa độ</th><td class="pick"><span class="tag ok">Đáp ứng</span>Tìm đúng 470/500 (94%).</td><td><span class="tag ok">Đáp ứng</span>Tìm đúng 440/500 (88%).</td></tr>
+                  <tr><th scope="row">Thời gian phản hồi</th><td class="pick">p95 khoảng 180 ms.</td><td>p95 khoảng 140 ms.</td></tr>
+                  <tr><th scope="row">SDK mobile</th><td class="pick"><span class="tag ok">Đáp ứng</span>SDK iOS và Android; có thể gọi thẳng từ app.</td><td><span class="tag no">Không đáp ứng</span>Chỉ REST; giữ nguyên luồng qua <code>address-api</code>.</td></tr>
+                  <tr><th scope="row">Lưu kết quả vào cache</th><td class="pick"><span class="tag unk">Chưa xác minh</span>Điều khoản chưa nói rõ thời hạn lưu; đã hỏi sales.</td><td><span class="tag ok">Đáp ứng</span>Cho lưu 30 ngày.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <caption>Chi phí theo bảng giá công khai tra cứu 10/11/2026, giả định 300.000 request/tháng (log tháng 10: 272.000), chưa gồm VAT.</caption>
+                <thead><tr><th scope="col">Khoản</th><th scope="col" class="pick">API A</th><th scope="col">API B</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row">Đơn giá</th><td class="pick">4 USD / 1.000 request; miễn phí 10.000 request đầu mỗi tháng.</td><td>2,5 USD / 1.000 request; cam kết tối thiểu 300 USD/tháng.</td></tr>
+                  <tr><th scope="row">Ước tính / tháng</th><td class="pick">(300.000 − 10.000) × 4 / 1.000 ≈ <strong>1.160 USD</strong></td><td>300.000 × 2,5 / 1.000 = <strong>750 USD</strong></td></tr>
+                  <tr><th scope="row">Chu kỳ &amp; ràng buộc</th><td class="pick">Trả theo tháng, không cam kết.</td><td>Hợp đồng 12 tháng.</td></tr>
+                  <tr><th scope="row">Chi phí chuyển đổi</th><td class="pick">Sửa app (dùng SDK) và <code>address-api</code>; ước tính 5 ngày công.</td><td>Chỉ sửa <code>address-api</code>; ước tính 2 ngày công.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="recommendation"><strong>Hướng đề xuất:</strong> chọn API A vì độ chính xác cao hơn 6 điểm phần trăm và gợi ý được số nhà, đúng vào nguyên nhân tài xế phải gọi xác nhận. Đổi lại chi phí cao hơn khoảng 410 USD/tháng. Nếu PO ưu tiên chi phí thì chọn API B và chấp nhận khách tự gõ số nhà.</p>
+          </section>
+
+          <section class="subsection" aria-labelledby="next-title">
+            <h3 class="sub-heading" id="next-title"><span class="section-number" aria-hidden="true">2.2</span>Implement, test &amp; release</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th scope="col">Bước / module</th><th scope="col">Thay đổi &amp; dependency</th><th scope="col">Test / tiêu chí nghiệm thu</th></tr></thead>
+                <tbody>
+                  <tr><th scope="row">1. Chốt điều khoản</th><td>Sales API A trả lời về thời hạn cache.</td><td>Cho phép cache ≥ 7 ngày; nếu không, tính lại chi phí khi bỏ cache.</td></tr>
+                  <tr><th scope="row">2. Implement</th><td><code>address-api</code> thêm provider mới sau feature flag; app 5.4 tích hợp SDK.</td><td>Contract test cho <code>address-api</code>; regression luồng tạo đơn trên iOS và Android.</td></tr>
+                  <tr><th scope="row">3. Release trước 15/12</th><td>Bật flag 20% người dùng, sau 1 tuần lên 100%; app cũ vẫn đi qua <code>address-api</code>.</td><td>Tỷ lệ đơn phải gọi xác nhận dưới 8%; error rate <code>address-api</code> không tăng; tắt flag để rollback.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="report-section" aria-labelledby="decision-title">
+        <h2 class="section-heading" id="decision-title"><span class="section-number" aria-hidden="true">03</span>Cần xác nhận</h2>
+        <div class="section-body">
+          <ul class="decisions">
+            <li>Chọn API A và chấp nhận chi phí khoảng 1.160 USD/tháng (cao hơn API B khoảng 410 USD).<span class="owner">PO · trước 20/11 để kịp release 15/12</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <footer class="report-footer">
+        <p><strong>Nguồn và phạm vi kiểm chứng</strong></p>
+        <ul class="sources">
+          <li>Bảng giá công khai API A và API B, tra cứu 10/11/2026: đơn giá, gói miễn phí, cam kết tối thiểu.</li>
+          <li>Điều khoản sử dụng API B, mục lưu trữ dữ liệu: thời hạn cache 30 ngày.</li>
+          <li>Chạy thử 500 địa chỉ đơn hàng tháng 10 trên staging, ngày 11/11/2026; log tạo đơn tháng 10 cho sản lượng và tỷ lệ gọi xác nhận.</li>
+        </ul>
+      </footer>
+    </article>
+  </main>
+</body>
+</html>
