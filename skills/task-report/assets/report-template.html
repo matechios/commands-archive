@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>[Tính năng / module app] — [Vấn đề hoặc đề xuất]</title>
+  <style>
+    /* CHỈNH STYLE TẠI ĐÂY: màu thương hiệu, font, cỡ chữ, độ rộng, khoảng cách. */
+    :root {
+      --brand: #2457a6;
+      --ink: #172b43;
+      --muted: #52677c;
+      --canvas: #eef3f7;
+      --paper: #ffffff;
+      --line: #d8e3eb;
+      --soft: #edf7f6;
+      --chip-bg: #f1f3f5;
+      --table-bg: #f1f3f5;
+      --zebra: #f8f9fa;
+      --ok: #17724a;   --ok-bg: #e5f5ed;
+      --warn: #7a5200; --warn-bg: #fff3d6;
+      --no: #b3261e;   --no-bg: #fdeceb;
+      --unk: #44566e;  --unk-bg: #e9eef5;
+      --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --font-size: 15px;
+      --line-height: 1.65;
+      --page-width: 920px;
+      --page-padding: 52px;
+      --section-gap: 26px;
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      padding: 44px 24px;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: var(--font-body);
+      font-size: var(--font-size);
+      line-height: var(--line-height);
+      -webkit-font-smoothing: antialiased;
+    }
+    .report-page {
+      width: 100%;
+      max-width: var(--page-width);
+      margin: 0 auto;
+      padding: var(--page-padding);
+      background: var(--paper);
+      border-top: 5px solid var(--brand);
+      border-radius: 0 0 var(--radius) var(--radius);
+      box-shadow: 0 12px 44px rgb(23 43 67 / 8%);
+      overflow-wrap: anywhere;
+    }
+    .report-page + .report-page { margin-top: 28px; }
+
+    /* Header */
+    .report-header { padding-bottom: 24px; }
+    .eyebrow, .summary-label {
+      margin: 0 0 10px;
+      color: var(--brand);
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: 30px; line-height: 1.28; letter-spacing: -.025em; text-wrap: balance; }
+    .subtitle { margin: 8px 0 0; color: var(--muted); font-size: 16px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; font-size: 12px; }
+    .meta div { display: flex; gap: 6px; padding: 3px 11px; background: var(--chip-bg); border-radius: 999px; color: var(--muted); }
+    .meta dt { font-weight: 650; }
+    .meta dd { margin: 0; color: var(--ink); }
+
+    /* Tóm tắt */
+    .summary { padding: 20px 24px; background: var(--chip-bg); border-left: 3px solid var(--brand); border-radius: 0 var(--radius) var(--radius) 0; }
+    .summary p:last-child { margin: 0; font-size: 16px; }
+    .summary ul { margin: 0; padding-left: 19px; font-size: 16px; }
+    .summary li + li { margin-top: 6px; }
+    .summary-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 10px; }
+    .summary-heading .summary-label { margin: 0; }
+
+    /* Badge & tag trạng thái: luôn kèm chữ, không chỉ dựa vào màu */
+    .badge, .tag {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1.6;
+      white-space: nowrap;
+      color: var(--warn);
+      background: var(--warn-bg);
+    }
+    .tag.ok  { color: var(--ok);  background: var(--ok-bg); }
+    .tag.warn { color: var(--warn); background: var(--warn-bg); }
+    .tag.no  { color: var(--no);  background: var(--no-bg); }
+    .tag.unk { color: var(--unk); background: var(--unk-bg); }
+
+    /* Mục */
+    .report-section { padding: var(--section-gap) 0; border-bottom: 1px solid var(--line); }
+    .report-section:last-of-type { border-bottom: 0; }
+    .section-heading { display: flex; align-items: baseline; gap: 10px; margin: 0 0 14px; font-size: 17px; line-height: 1.4; font-weight: 750; letter-spacing: -.01em; }
+    .section-number { flex: none; padding: 1px 7px; border-radius: 5px; background: var(--soft); color: var(--brand); font: 650 11px/1.7 var(--font-mono); }
+    .sub-heading { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; font-size: 14px; line-height: 1.4; font-weight: 700; }
+    .subsection + .subsection { margin-top: 24px; }
+    .report-page > .report-section:first-child { padding-top: 0; }
+    .section-body { min-width: 0; }
+    .section-body > :first-child { margin-top: 0; }
+    .section-body > :last-child { margin-bottom: 0; }
+    p { margin: 0 0 10px; }
+    ul, ol { padding-left: 19px; margin: 0; }
+    li + li { margin-top: 8px; }
+    li::marker { color: var(--brand); }
+    strong { font-weight: 700; }
+    a { color: var(--brand); text-underline-offset: 3px; }
+    a:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+    code { padding: 1px 5px; border-radius: 4px; background: var(--soft); font-family: var(--font-mono); font-size: .86em; }
+
+    /* Bảng */
+    .table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+    table { width: 100%; background: var(--table-bg); border-collapse: collapse; font-size: 13px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+    caption { padding: 10px 12px; text-align: left; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+    th, td { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    thead th { background: var(--table-bg); color: var(--ink); font-size: 12px; font-weight: 700; }
+    tbody th { width: 22%; font-weight: 650; overflow-wrap: normal; }
+    tbody tr:nth-child(even) { background: var(--zebra); }
+    tbody tr:last-child > * { border-bottom: 0; }
+    .pick { background: var(--table-bg); box-shadow: inset 2px 0 0 var(--brand); } /* cột phương án đề xuất */
+    .table-note { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
+
+    /* Khối kết luận / quyết định */
+    .recommendation, .decision { margin-top: 16px; padding: 16px 18px; background: var(--chip-bg); border-left: 3px solid var(--brand); border-radius: 0 var(--radius) var(--radius) 0; }
+    .decision { margin-top: 0; }
+
+    /* Footer & nguồn */
+    .report-footer { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .report-footer p { margin: 0; }
+    .sources { margin-top: 8px; padding-left: 17px; }
+    .sources li + li { margin-top: 4px; }
+
+    @media (max-width: 640px) {
+      body { padding: 16px 10px; }
+      .report-page { padding: 26px 20px; }
+      h1 { font-size: 25px; }
+      .subtitle { font-size: 14px; }
+      .summary { padding: 16px; }
+      .section-heading { font-size: 16px; }
+      th, td { padding: 8px 10px; }
+      tbody th { width: auto; min-width: 110px; }
+    }
+
+    @page { size: A4; margin: 16mm; }
+    @media print {
+      :root { --font-size: 10pt; --section-gap: 14px; --paper: #fff; --canvas: #fff; }
+      body { padding: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .report-page { max-width: none; padding: 14px 0 0; box-shadow: none; border-radius: 0; }
+      .report-page + .report-page { margin-top: 0; break-before: page; }
+      h1 { font-size: 23pt; }
+      .subtitle { font-size: 11pt; }
+      .report-header { padding-bottom: 16px; }
+      .meta { margin-top: 12px; font-size: 9pt; }
+      .summary { padding: 14px 18px; break-inside: avoid; }
+      .summary p:last-child { font-size: 11pt; }
+      .summary ul { font-size: 11pt; }
+      .section-heading { font-size: 11pt; margin-bottom: 10px; break-after: avoid; }
+      .section-number { font-size: 8pt; }
+      .sub-heading { font-size: 10.5pt; margin-bottom: 8px; break-after: avoid; }
+      .subsection + .subsection { margin-top: 16px; }
+      .section-body li, .decision, .recommendation, tr { break-inside: avoid; }
+      p, li { orphans: 3; widows: 3; }
+      li + li { margin-top: 6px; }
+      .table-wrap { overflow: visible; }
+      table { font-size: 10pt; }
+      caption { font-size: 9pt; }
+      thead { display: table-header-group; }
+      th, td { padding: 6px 9px; }
+      .table-note { font-size: 9pt; }
+      .report-footer { padding-top: 10px; font-size: 8pt; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Tối đa 3 trang A4: xóa/gộp các report-page khi bài ngắn; kiểm tra số trang thực tế sau khi điền. -->
+  <main aria-labelledby="report-title">
+    <article class="report-page" aria-label="Bối cảnh và phát hiện">
+      <header class="report-header">
+        <p class="eyebrow">[Tính năng / module app]</p>
+        <h1 id="report-title">[Vấn đề hoặc đề xuất]</h1>
+        <p class="subtitle">[Phạm vi: app, nền tảng iOS/Android, build hoặc version khảo sát]</p>
+        <!-- Ngày và Báo cáo bởi là bắt buộc; không bịa tên người báo cáo. -->
+        <dl class="meta">
+          <div><dt>Ngày</dt><dd>[Ngày báo cáo]</dd></div>
+          <div><dt>Báo cáo bởi</dt><dd>[Tên người / team báo cáo]</dd></div>
+        </dl>
+      </header>
+      <section class="summary" aria-labelledby="summary-title">
+        <div class="summary-heading">
+          <h2 class="summary-label" id="summary-title">Tóm tắt</h2>
+          <span class="badge">[Đã đọc code / đã chạy trên thiết bị / chưa đo]</span>
+        </div>
+        <ul>
+          <li>[Chức năng/luồng và nền tảng/build bị ảnh hưởng; tác động tới người dùng.]</li>
+          <li>[Hướng xử lý đề xuất.]</li>
+          <li>[Mức kiểm chứng hoặc việc cần chốt. Chỉ giữ 1–3 ý ngắn.]</li>
+        </ul>
+      </section>
+      <section class="report-section" aria-labelledby="findings-title">
+        <h2 class="section-heading" id="findings-title"><span class="section-number" aria-hidden="true">01</span>Hiện trạng &amp; vấn đề</h2>
+        <div class="section-body"><div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col">Chức năng / luồng</th><th scope="col">Hành vi trong app</th><th scope="col">Bằng chứng &amp; ảnh hưởng người dùng</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">[Màn hình / luồng, ví dụ khởi động, đồng bộ offline]</th><td>[Hành vi hiện tại hoặc lỗi; nền tảng và OS version gặp phải]</td><td>[Crash log, test, số đo; tác động tới người dùng hoặc giả thuyết cần test]</td></tr>
+              <tr><th scope="row">[Lifecycle / background / permission]</th><td>[Hành vi khi app vào nền, bị kill hoặc bị từ chối quyền]</td><td>[ANR, RAM, pin hoặc mất dữ liệu; nguồn xác nhận]</td></tr>
+              <tr><th scope="row">[Local storage / network / SDK]</th><td>[Giới hạn hiện tại: cache, retry, migration, tích hợp SDK]</td><td>[Căn cứ và tác động tới tính năng hoặc dữ liệu]</td></tr>
+            </tbody>
+          </table>
+        </div></div>
+      </section>
+    </article>
+
+    <!-- Mục 02 gồm compare khi cần, tác động kỹ thuật và các bước implement/test/release; xóa phần không liên quan. -->
+    <article class="report-page" aria-labelledby="solution-title">
+      <section class="report-section" aria-labelledby="solution-title">
+        <h2 class="section-heading" id="solution-title"><span class="section-number" aria-hidden="true">02</span>Phương án &amp; kế hoạch triển khai</h2>
+        <div class="section-body">
+      <section class="subsection" aria-labelledby="compare-title">
+        <h3 class="sub-heading" id="compare-title"><span class="section-number" aria-hidden="true">2.1</span>So sánh hướng xử lý</h3>
+        <div class="section-body">
+          <div class="table-wrap">
+            <table>
+              <caption>[Đối chiếu trên cùng điều kiện: nền tảng, thiết bị test và min OS.]</caption>
+              <thead><tr><th scope="col">Tiêu chí</th><th scope="col">[Hiện tại / giải pháp A]</th><th scope="col" class="pick">[Đề xuất / giải pháp B]</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">Đáp ứng tính năng</th><td><span class="tag unk">Chưa xác minh</span> [Phạm vi; iOS và Android đánh giá riêng; tag ok / no / unk]</td><td class="pick"><span class="tag ok">Đáp ứng</span> [Phạm vi và khoảng thiếu]</td></tr>
+                <tr><th scope="row">Hiệu năng / tài nguyên</th><td>[Startup, RAM, pin, kích thước app có căn cứ]</td><td class="pick">[Số đo cần lấy trên thiết bị thật]</td></tr>
+                <tr><th scope="row">Thay đổi code / API</th><td>[Module app/shared, SDK, API contract cần sửa]</td><td class="pick">[Module app/shared, SDK, API contract cần sửa]</td></tr>
+                <tr><th scope="row">Tương thích</th><td>[Min OS, app version cũ, dữ liệu local và migration]</td><td class="pick">[Min OS, app version cũ, dữ liệu local và migration]</td></tr>
+                <tr><th scope="row">Release &amp; review store</th><td>[Phụ thuộc App Store/Play review, quyền hoặc khai báo mới]</td><td class="pick">[Staged rollout, feature flag, khả năng rollback]</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="recommendation"><strong>Hướng đề xuất:</strong> [Chọn hướng nào, lý do; việc chạy thử hoặc đo cần làm trước khi implement và release.]</p>
+        </div>
+      </section>
+    
+      <section class="subsection" aria-labelledby="next-title">
+        <h3 class="sub-heading" id="next-title"><span class="section-number" aria-hidden="true">2.2</span>Implement, test &amp; release</h3>
+        <div class="section-body">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th scope="col">Bước / module</th><th scope="col">Thay đổi &amp; dependency</th><th scope="col">Test / tiêu chí nghiệm thu</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">1. [Chạy thử &amp; đo]</th><td>[Giả thuyết cần test; module và SDK liên quan]</td><td>[Số đo trên thiết bị thật, các OS version cần phủ]</td></tr>
+                <tr><th scope="row">2. [Implement]</th><td>[Phạm vi sửa: app, shared module, API; feature flag nếu có]</td><td>[Unit/UI test, regression, migration dữ liệu local, test app version cũ]</td></tr>
+                <tr><th scope="row">3. [Release]</th><td>[Build, review store, staged rollout, phối hợp server nếu có]</td><td>[Crash-free rate, ANR và chỉ số cần theo dõi; điều kiện rollback]</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="table-note">[Owner, estimate và deadline nếu đã xác định. Bỏ bước không thuộc phạm vi; không coi đề xuất là task đã giao.]</p>
+        </div>
+      </section>
+        </div>
+      </section>
+      <section class="report-section" aria-labelledby="decision-title">
+        <h3 class="section-heading" id="decision-title"><span class="section-number" aria-hidden="true">03</span>Cần xác nhận</h3>
+        <div class="section-body">
+          <p class="decision">[1–2 việc cần chốt: phương án, scope hoặc lịch release; kèm người phản hồi nếu đã biết.]</p>
+        </div>
+      </section>
+      <footer class="report-footer">
+        <p><strong>Nguồn và phạm vi kiểm chứng</strong></p>
+        <ul class="sources">
+          <!-- Chỉ dùng link công khai thật; không ghi file/đường dẫn local. Không có link thì ghi tên tài liệu và mốc. -->
+          <li><a href="https://example.com/">[Tên tài liệu / trang chính thức]</a>: [điều dùng làm căn cứ; mốc tra cứu nếu có].</li>
+          <li><a href="https://example.com/">[Ticket / PR / store guideline công khai]</a>: [điều dùng làm căn cứ].</li>
+        </ul>
+      </footer>
+    </article>
+  </main>
+</body>
+</html>
