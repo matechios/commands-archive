@@ -257,7 +257,7 @@ cat <<'__FB_BUILD_TOOL__'
 set -euo pipefail
 
 # Bump TOOL_VERSION for every release.
-TOOL_VERSION=1.0.2
+TOOL_VERSION=1.0.3
 CONFIG_NAME=.team-tools/fb-build.json
 OUT_ROOT="${FB_BUILD_HOME:-$HOME/Library/Developer/fb-build}"
 KEEP_RUNS=5
@@ -287,29 +287,21 @@ usage() {
   cat <<'EOF'
 Build app iOS trong repo hiện tại và upload lên Firebase App Distribution.
 
-  fb-build [tùy chọn]         kiểm tra, build, upload
-  fb-build init [tùy chọn]    tạo .team-tools/fb-build.json cho repo
-  fb-build xcodes             liệt kê các bản Xcode đã cài
-  fb-build --version          in phiên bản của tool
+  fb-build [tùy chọn]        kiểm tra, build, upload
+  fb-build init [tùy chọn]   tạo config cho repo
+  fb-build xcodes            liệt kê Xcode đã cài
+  fb-build --version         in version của tool
 
-Tùy chọn khi build:
-  -m, --message TEXT      ghi chú cho tester trong release notes
-  -v, --app-version X     version của bản build (MARKETING_VERSION), vd 1.2.0
-  -b, --build-number N    build number (CURRENT_PROJECT_VERSION), vd 42
-                          Mặc định: theo project. Không sửa file nào trong repo.
-      --dry-run           chỉ kiểm tra và in release notes dự kiến, không build
+Build:
+  -m TEXT        ghi chú cho tester
+  -v VERSION     version, mặc định theo project
+  -b BUILD       build number, mặc định theo project
+  --dry-run      chỉ kiểm tra, không build
 
-Tùy chọn của init:
-      --scheme X          scheme
-      --plist PATH        GoogleService-Info*.plist dùng để upload
-      --xcode X           Xcode dùng để build, theo đúng version (16.4; 27 là 27.0)
-                          hoặc đường dẫn .app (xem: fb-build xcodes).
-                          Mặc định: Xcode đang chọn
-  Build luôn dùng Xcode ghi trong config. Chạy lại init sẽ ghi đè config đã có.
-
-Build được gửi cho tất cả nhóm tester của Firebase project và các tester trong
-"testers" của config (init ghi vào đó mọi tester của project).
-Release notes luôn kèm một dòng branch, commit, author và configuration.
+Init:
+  --scheme X     scheme
+  --plist PATH   GoogleService-Info*.plist dùng để upload
+  --xcode X      version Xcode (vd 16.4) hoặc đường dẫn .app
 EOF
 }
 
