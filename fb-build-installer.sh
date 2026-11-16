@@ -257,7 +257,7 @@ cat <<'__FB_BUILD_TOOL__'
 set -euo pipefail
 
 # Bump TOOL_VERSION for every release.
-TOOL_VERSION=1.0.1
+TOOL_VERSION=1.0.2
 CONFIG_NAME=.team-tools/fb-build.json
 OUT_ROOT="${FB_BUILD_HOME:-$HOME/Library/Developer/fb-build}"
 KEEP_RUNS=5
@@ -781,7 +781,8 @@ cmd_init() {
 # Preflight
 # ---------------------------------------------------------------------------
 preflight() {
-  step "Kiểm tra (fb-build $TOOL_VERSION)"
+  step "Kiểm tra"
+  ok "Tool version: $TOOL_VERSION"
 
   # Git: only committed code is built, so the build matches HEAD exactly.
   HEAD_SHA="$(git rev-parse --verify --quiet HEAD)" || fail "Repo chưa có commit nào"
@@ -818,7 +819,10 @@ preflight() {
     fi
   fi
   if $have_container && [[ -n "$SCHEME" ]]; then
-    ok "${WORKSPACE:-$PROJECT} | scheme $SCHEME | $CONFIGURATION"
+    local version=
+    ! $have_xcode || version="$(app_version)"
+    ok "${WORKSPACE:-$PROJECT} | scheme $SCHEME | $CONFIGURATION${version:+ | $version}"
+    [[ -n "$version" ]] || warn "Không đọc được version và build của scheme $SCHEME"
   fi
 
   # CocoaPods: the Pods sandbox must match Podfile.lock, otherwise the build
@@ -872,6 +876,38 @@ preflight() {
   fi
 }
 
+# Prints the version (build) the archive will get: -v/-b, else the app target's
+# Info.plist value, which is usually $(MARKETING_VERSION) / $(CURRENT_PROJECT_VERSION).
+# Prints nothing when neither can be read.
+app_version() {
+  local json i type version= build= info= v b
+  json="$(mktemp -t fb-build-settings)"
+  xcodebuild -showBuildSettings -json "${CONTAINER[@]}" -scheme "$SCHEME" -configuration "$CONFIGURATION" \
+    -sdk iphoneos > "$json" 2>/dev/null || true
+  for ((i = 0; ; i++)); do
+    type="$(plutil -extract "$i.buildSettings.PRODUCT_TYPE" raw -o - "$json" 2>/dev/null)" || break
+    [[ "$type" == com.apple.product-type.application ]] || continue
+    version="$(plutil -extract "$i.buildSettings.MARKETING_VERSION" raw -o - "$json" 2>/dev/null || true)"
+    build="$(plutil -extract "$i.buildSettings.CURRENT_PROJECT_VERSION" raw -o - "$json" 2>/dev/null || true)"
+    info="$(plutil -extract "$i.buildSettings.INFOPLIST_FILE" raw -o - "$json" 2>/dev/null || true)"
+    if [[ -n "$info" ]]; then
+      info="$(plutil -extract "$i.buildSettings.SRCROOT" raw -o - "$json" 2>/dev/null || echo .)/$info"
+      # Hard-coded values in Info.plist win over the build settings.
+      v="$(plist_get CFBundleShortVersionString "$info" || true)"
+      b="$(plist_get CFBundleVersion "$info" || true)"
+      [[ -z "$v" || "$v" == *'$'* ]] || version="$v"
+      [[ -z "$b" || "$b" == *'$'* ]] || build="$b"
+    fi
+    break
+  done
+  rm -f "$json"
+  if [[ -z "$OPT_APP_VERSION$OPT_BUILD_NUMBER" ]]; then
+    [[ -z "$version$build" ]] || echo "${version:-?} (${build:-?})"
+  else
+    echo "${OPT_APP_VERSION:-${version:-?}} (${OPT_BUILD_NUMBER:-${build:-?}}) ${C_DIM}· project: ${version:-?} (${build:-?})${C_0}"
+  fi
+}
+
 check_firebase_access() {
   local account=
   if firebase_json login:list; then
@@ -892,9 +928,12 @@ check_firebase_access() {
   # from the config.
   TESTER_GROUPS="$(tester_groups)"
   TESTERS="$(tr -d ' ' <<< "$CFG_TESTERS")"
-  ok "Firebase CLI: $account | gửi cho: $(recipients)"
-  [[ -n "$TESTER_GROUPS" || -n "$TESTERS" ]] \
-    || warn "Project $PROJECT_ID chưa có nhóm tester nào và config không có \"testers\": build chỉ được upload, không gửi cho ai"
+  ok "Firebase CLI: $account"
+  if [[ -n "$TESTER_GROUPS" || -n "$TESTERS" ]]; then
+    ok "Gửi cho: $(recipients)"
+  else
+    warn "Project $PROJECT_ID chưa có nhóm tester nào và config không có \"testers\": build chỉ được upload, không gửi cho ai"
+  fi
 }
 
 # Group aliases, comma-separated, from FB_RESULT of appdistribution:groups:list.
@@ -1248,8 +1287,6 @@ cmd_run() {
     preview="$(mktemp -t fb-build-notes)"
     write_release_notes "$preview"
     step "Upload Firebase App Distribution (dự kiến)"
-    [[ -z "$OPT_APP_VERSION$OPT_BUILD_NUMBER" ]] \
-      || echo "  Version: ${OPT_APP_VERSION:-theo project} (${OPT_BUILD_NUMBER:-theo project})"
     show_release_notes "$preview"
     rm -f "$preview"
     echo
