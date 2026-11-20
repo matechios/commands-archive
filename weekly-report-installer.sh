@@ -201,14 +201,23 @@ EOF
     echo "${C_YEL}${C_B}Đã cài ios-weekly-report.${C_0} Xử lý $warnings mục ở trên. Để báo cáo tuần, nhập vào Claude hoặc Codex:"
   fi
   echo
-  echo "    báo cáo tuần [preview] [W24] [của Nguyen Van A]"
+  echo "    báo cáo tuần [W24] [của Nguyen Van A]"
   echo "    Vấn đề 1; Vấn đề 2"
   echo "    Plan tuần tới 1; Plan tuần tới 2"
   echo "    [Note thêm 1]"
   echo
   echo "${C_DIM}Phần trong [...] là optional.${C_0}"
   echo
+  echo "Không có commit? Thêm ${C_B}custom${C_0} và ghi việc đã làm ở dòng 2:"
+  echo
+  echo "    báo cáo tuần custom [W24] [của Nguyen Van A]"
+  echo "    Việc đã làm 1; Việc đã làm 2"
+  echo "    Vấn đề 1; Vấn đề 2"
+  echo "    Plan tuần tới 1; Plan tuần tới 2"
+  echo "    [Note thêm 1]"
+  echo
   echo "${C_DIM}Chạy tay: python3 .team-tools/weekly-report/report.py --dry-run${C_0}"
+  echo "${C_DIM}Chạy tay, custom: python3 .team-tools/weekly-report/report.py --no-git --performance \"- Việc đã làm\" --note \"Vấn đề; Plan\"${C_0}"
 }
 
 # main chạy ở dòng cuối nên bash đọc hết file trước khi làm gì. Nhờ vậy
